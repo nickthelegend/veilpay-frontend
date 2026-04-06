@@ -27,10 +27,10 @@ export default function BalanceCard({
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px', marginBottom: '12px' }}>
                 <span style={{ fontSize: '2.5rem', fontWeight: 700, color: '#ffffff' }}>
-                    ${Math.floor(totalBalance).toLocaleString('en-US')}
+                    {Math.floor(totalBalance).toLocaleString('en-US')}
                 </span>
                 <span style={{ fontSize: '1.25rem', color: '#888888' }}>
-                    .{(totalBalance % 1).toFixed(2).split('.')[1]}
+                    .{(totalBalance % 1).toFixed(4).split('.')[1]} CFX
                 </span>
             </div>
 

@@ -9,12 +9,18 @@ import VirtualCard from "@/components/VirtualCard";
 import TransactionIcon from "@/components/TransactionIcon";
 import PageTransition from "@/components/PageTransition";
 import { useAccount } from "wagmi";
-import { recentTransactions } from "@/lib/mockData";
+import { useQuery } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
 
 export default function CardDetailPage() {
-    const { isConnected } = useAccount();
+    const { address, isConnected } = useAccount();
     const [showBalance, setShowBalance] = useState(true);
     const [showMenu, setShowMenu] = useState(false);
+
+    // Real data from Convex
+    const history = useQuery(api.payments.getPaymentHistory, 
+        address ? { walletAddress: address } : "skip"
+    );
 
     if (!isConnected) {
         return (
@@ -27,8 +33,14 @@ export default function CardDetailPage() {
         );
     }
 
-    // Filter transactions for this card (demo: show all)
-    const cardTransactions = recentTransactions.slice(0, 5);
+    // Filter transactions (demo: show all related to this account)
+    const cardTransactions = history?.slice(0, 5) || [];
+    
+    // Calculate real stats
+    const totalSpent = history?.filter((tx: any) => tx.direction === "sent")
+        .reduce((acc: number, tx: any) => acc + parseFloat(tx.amountFormatted.split(' ')[0]), 0) || 0;
+    const totalReceived = history?.filter((tx: any) => tx.direction === "receive")
+        .reduce((acc: number, tx: any) => acc + parseFloat(tx.amountFormatted.split(' ')[0]), 0) || 0;
 
     const menuItems = [
         { icon: <Lock size={20} />, label: "Lock Card", color: '#ffffff' },
@@ -194,23 +206,27 @@ export default function CardDetailPage() {
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                             <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Total Spending</p>
-                                <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffffff' }}>$4,850</p>
+                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Total Payouts</p>
+                                <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffffff' }}>
+                                    {showBalance ? `${totalSpent.toFixed(2)} CFX` : "****"}
+                                </p>
                             </div>
                             <div style={{ padding: '16px', background: 'rgba(204, 255, 0, 0.05)', borderRadius: '16px', border: '1px solid rgba(204, 255, 0, 0.1)' }}>
-                                <p style={{ fontSize: '0.75rem', color: '#ccff00', marginBottom: '4px' }}>Round-up</p>
-                                <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ccff00' }}>$127.50</p>
+                                <p style={{ fontSize: '0.75rem', color: '#ccff00', marginBottom: '4px' }}>Total Yield</p>
+                                <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ccff00' }}>
+                                    {showBalance ? `${totalReceived.toFixed(2)} CFX` : "****"}
+                                </p>
                             </div>
                         </div>
 
                         <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                <span style={{ fontSize: '0.875rem', color: '#999999' }}>Used Limit</span>
-                                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ffffff' }}>$4,850 / $15,000</span>
+                                <span style={{ fontSize: '0.875rem', color: '#999999' }}>Account Usage</span>
+                                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ffffff' }}>{history?.length || 0} stealth events</span>
                             </div>
                             <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
                                 <div style={{
-                                    width: '32%',
+                                    width: history?.length ? `${Math.min(history.length * 5, 100)}%` : '0%',
                                     height: '100%',
                                     background: '#ccff00',
                                     borderRadius: '4px',
@@ -245,9 +261,9 @@ export default function CardDetailPage() {
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {cardTransactions.map((tx) => (
+                            {cardTransactions.map((tx: any) => (
                                 <div
-                                    key={tx.id}
+                                    key={tx._id}
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -259,22 +275,22 @@ export default function CardDetailPage() {
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <TransactionIcon icon={tx.icon} />
+                                        <TransactionIcon icon={tx.direction === "sent" ? "send" : "receive"} />
                                         <div>
-                                            <p style={{ fontWeight: 500, color: '#ffffff', fontSize: '0.9375rem' }}>{tx.merchant}</p>
-                                            <p style={{ fontSize: '0.75rem', color: '#999999' }}>{tx.category}</p>
+                                            <p style={{ fontWeight: 500, color: '#ffffff', fontSize: '0.9375rem' }}>
+                                                {tx.direction === "sent" ? "Sent" : "Received"}
+                                            </p>
+                                            <p style={{ fontSize: '0.75rem', color: '#999999' }}>
+                                                {new Date(tx.sentAt || tx.discoveredAt).toLocaleDateString()}
+                                            </p>
                                         </div>
                                     </div>
 
                                     <div style={{ textAlign: 'right' }}>
-                                        <p style={{ fontWeight: 600, color: '#ffffff' }}>
-                                            -${tx.originalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                        <p style={{ fontWeight: 600, color: tx.direction === "sent" ? "#ffffff" : "#ccff00" }}>
+                                            {tx.direction === "sent" ? "-" : "+"}{tx.amountFormatted.split(' ')[0]}
                                         </p>
-                                        {tx.investedAmount > 0 && (
-                                            <p style={{ fontSize: '0.75rem', color: '#ccff00', fontWeight: 600 }}>
-                                                +${tx.investedAmount.toFixed(2)}
-                                            </p>
-                                        )}
+                                        <p style={{ fontSize: '0.75rem', color: '#999999' }}>{tx.status}</p>
                                     </div>
                                 </div>
                             ))}

@@ -1,17 +1,16 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, CreditCard as CardIcon } from "lucide-react";
 import Header from "@/components/Header";
 import MobileNav from "@/components/MobileNav";
 import BalanceCard from "@/components/BalanceCard";
-import CardCarousel from "@/components/CardCarousel";
 import TransactionIcon from "@/components/TransactionIcon";
 import PageTransition from "@/components/PageTransition";
-import AIInsightWidget from "@/components/AIInsightWidget";
-import { cards } from "@/lib/mockData";
-import { useAccount } from "wagmi";
+import AIInsights from "@/components/AIInsights";
+import { useAccount, useBalance } from "wagmi";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { formatEther } from "ethers";
 
 export default function DashboardPage() {
     const { address, isConnected } = useAccount();
@@ -25,10 +24,21 @@ export default function DashboardPage() {
         address ? { walletAddress: address } : "skip"
     );
 
-    // Mock stats for demo if profile doesn't exist
-    const totalBalance = profile?.isRegistered ? 25480.50 : 0;
-    const totalInvested = profile?.isRegistered ? 3245.80 : 0;
-    const totalReturns = profile?.isRegistered ? 412.35 : 0;
+    const { data: balanceData } = useBalance({
+        address: address,
+    });
+
+    const totalBalance = balanceData ? parseFloat(formatEther(balanceData.value)) : 0;
+    
+    // Calculate stats from real history
+    const totalSent = history?.filter((tx: any) => tx.direction === "sent")
+        .reduce((acc: number, tx: any) => acc + parseFloat(tx.amountFormatted.split(' ')[0]), 0) || 0;
+    
+    const totalReceived = history?.filter((tx: any) => tx.direction === "receive")
+        .reduce((acc: number, tx: any) => acc + parseFloat(tx.amountFormatted.split(' ')[0]), 0) || 0;
+
+    const totalInvested = totalSent;
+    const totalReturns = totalReceived;
 
     return (
         <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', paddingBottom: '100px' }}>
@@ -55,7 +65,7 @@ export default function DashboardPage() {
                     <div style={{ marginTop: '24px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                             <h2 style={{ fontWeight: 600, color: '#ffffff', fontSize: '1rem' }}>
-                                Linked Cards ({isConnected ? cards.length : 0})
+                                Your Stealth Identity
                             </h2>
                             <button style={{
                                 width: '32px',
@@ -72,13 +82,45 @@ export default function DashboardPage() {
                             </button>
                         </div>
 
-                        <CardCarousel cards={isConnected ? cards : []} />
+                        <div style={{
+                            background: 'linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%)',
+                            borderRadius: '24px',
+                            padding: '24px',
+                            border: '1px solid rgba(204, 255, 0, 0.2)',
+                            position: 'relative',
+                            overflow: 'hidden'
+                        }}>
+                            <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '100px', height: '100px', background: '#ccff00', filter: 'blur(60px)', opacity: 0.1 }}></div>
+                            
+                            <p style={{ fontSize: '0.75rem', color: '#888888', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px' }}>Stealth Meta-Address</p>
+                            
+                            {profile?.spendingPubKey && profile?.viewingPubKey ? (
+                                <div style={{ fontSize: '0.875rem', color: '#ffffff', fontFamily: 'monospace', wordBreak: 'break-all', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '12px' }}>
+                                    {profile.spendingPubKey}{profile.viewingPubKey.slice(2)}
+                                </div>
+                            ) : (
+                                <p style={{ color: '#888888', fontSize: '0.875rem' }}>Not registered yet</p>
+                            )}
+                            
+                            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <p style={{ fontSize: '0.625rem', color: '#888888', textTransform: 'uppercase', marginBottom: '2px' }}>Status</p>
+                                    <p style={{ fontSize: '0.8125rem', color: profile?.isRegistered ? '#ccff00' : '#ff4d4d', fontWeight: 600 }}>
+                                        {profile?.isRegistered ? "Verified Shield" : "Unprotected"}
+                                    </p>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <p style={{ fontSize: '0.625rem', color: '#888888', textTransform: 'uppercase', marginBottom: '2px' }}>Network</p>
+                                    <p style={{ fontSize: '0.8125rem', color: '#ffffff', fontWeight: 600 }}>Conflux eSpace</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
 
                     {/* AI Insights Card */}
                     <div style={{ marginTop: '24px' }}>
-                        <AIInsightWidget />
+                        <AIInsights />
                     </div>
 
                     {/* Recent transactions */}
