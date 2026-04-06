@@ -250,9 +250,22 @@ export default function PaymentsPage() {
                             {txHash && (
                                 <div style={{ marginTop: '24px', padding: '16px', background: 'rgba(74, 222, 128, 0.1)', borderRadius: '12px', border: '1px solid rgba(74, 222, 128, 0.2)', display: 'flex', gap: '12px' }}>
                                     <CheckCircle2 size={20} color="#4ade80" />
-                                    <div>
+                                    <div style={{ flex: 1 }}>
                                         <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#4ade80' }}>Payment Dispatched</p>
-                                        <p style={{ fontSize: '0.75rem', color: '#888888', marginTop: '4px' }}>Tx: {txHash.slice(0, 20)}...</p>
+                                        <a 
+                                            href={`https://testnet.confluxscan.io/tx/${txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ 
+                                                fontSize: '0.75rem', 
+                                                color: '#888888', 
+                                                marginTop: '4px',
+                                                textDecoration: 'underline',
+                                                display: 'block'
+                                            }}
+                                        >
+                                            View on ConfluxScan: {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                                        </a>
                                     </div>
                                 </div>
                             )}

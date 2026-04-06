@@ -50,6 +50,11 @@ export default function DashboardPage() {
     const recordRegistration = useMutation(api.users.recordRegistration);
     const upsertProfile = useMutation(api.users.upsertProfile);
     const [isRegistering, setIsRegistering] = useState(false);
+    const [regTxHash, setRegTxHash] = useState<`0x${string}` | undefined>();
+
+    const { isLoading: isWaitingForTx, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({
+        hash: regTxHash,
+    });
 
     const handleRegister = async () => {
         if (!address) return;
@@ -66,10 +71,12 @@ export default function DashboardPage() {
                 args: [keys.stealthMetaAddress as `0x${string}`],
             });
 
-            // 2. Save keys locally (in a real app, use deterministic derivation)
+            setRegTxHash(hash);
+
+            // 2. Save keys locally
             localStorage.setItem(`veilpay_keys_${address}`, JSON.stringify(keys));
 
-            // 3. Update Convex
+            // 3. Update Convex profile pre-emptively
             await upsertProfile({
                 walletAddress: address,
                 spendingPubKey: keys.spendingPubKey,
@@ -84,17 +91,23 @@ export default function DashboardPage() {
                 viewingPubKey: keys.viewingPubKey,
                 stealthMetaAddress: keys.stealthMetaAddress,
                 txHash: hash,
-                blockNumber: 0, // Will be updated by indexer
+                blockNumber: 0,
             });
 
-            alert("Stealth Identity Registered Successfully!");
         } catch (error) {
             console.error("Registration failed:", error);
             alert("Registration failed. See console for details.");
-        } finally {
             setIsRegistering(false);
         }
     };
+
+    // Use effect to handle the success toast/alert after tx is mined
+    useEffect(() => {
+        if (isTxSuccess) {
+            setIsRegistering(false);
+            alert("Stealth Identity Registered & Confirmed on Conflux!");
+        }
+    }, [isTxSuccess]);
 
     return (
         <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', paddingBottom: '100px' }}>
@@ -125,21 +138,21 @@ export default function DashboardPage() {
                             </h2>
                             <button 
                                 onClick={handleRegister}
-                                disabled={isRegistering || profile?.isRegistered}
+                                disabled={isRegistering || isWaitingForTx || profile?.isRegistered}
                                 style={{
                                     width: '32px',
                                     height: '32px',
-                                    background: profile?.isRegistered ? 'rgba(255,255,255,0.05)' : 'rgba(204, 255, 0, 0.2)',
+                                    background: profile?.isRegistered ? 'rgba(255,255,255,0.05)' : (isWaitingForTx ? 'rgba(204, 255, 0, 0.4)' : 'rgba(204, 255, 0, 0.2)'),
                                     border: 'none',
                                     borderRadius: '10px',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    cursor: profile?.isRegistered ? 'default' : 'pointer',
-                                    opacity: isRegistering ? 0.5 : 1
+                                    cursor: (profile?.isRegistered || isWaitingForTx) ? 'default' : 'pointer',
+                                    opacity: (isRegistering || isWaitingForTx) ? 0.7 : 1
                                 }}
                             >
-                                <Plus size={18} color={profile?.isRegistered ? "#444" : "#ccff00"} />
+                                <Plus size={18} color={profile?.isRegistered ? "#444" : "#ccff00"} className={isWaitingForTx ? "animate-spin" : ""} />
                             </button>
                         </div>
 
