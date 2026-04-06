@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CreditCard, BarChart3, Clock, User, Sparkles } from "lucide-react";
+import { CreditCard, Send, Clock, User, Sparkles } from "lucide-react";
 
 const navItems = [
-    { href: "/dashboard", icon: CreditCard, label: "Cards" },
-    { href: "/ai-insights", icon: Sparkles, label: "AI Guide" },
-    { href: "/analytics", icon: BarChart3, label: "Insights" },
+    { href: "/dashboard", icon: CreditCard, label: "Home" },
+    { href: "/payments", icon: Send, label: "Pay" },
+    { href: "/ai-insights", icon: Sparkles, label: "Guide" },
     { href: "/history", icon: Clock, label: "History" },
     { href: "/account", icon: User, label: "Profile" },
 ];

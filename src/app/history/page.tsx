@@ -1,127 +1,158 @@
 "use client";
 
+import { Search, Filter, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { ArrowLeft, Download } from "lucide-react";
 import MobileNav from "@/components/MobileNav";
 import TransactionIcon from "@/components/TransactionIcon";
 import PageTransition from "@/components/PageTransition";
-import { recentTransactions } from "@/lib/mockData";
+import { useAccount } from "wagmi";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
 export default function HistoryPage() {
+    const { address, isConnected } = useAccount();
+    
+    // Real data from Convex
+    const history = useQuery(api.payments.getPaymentHistory, 
+        address ? { walletAddress: address } : "skip"
+    );
 
-    const groupedTransactions = recentTransactions.reduce((groups, tx) => {
-        const date = tx.date;
-        if (!groups[date]) groups[date] = [];
-        groups[date].push(tx);
-        return groups;
-    }, {} as Record<string, typeof recentTransactions>);
-
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
-    };
+    if (!isConnected) {
+        return (
+            <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', padding: '20px' }}>
+                <h2 style={{ marginBottom: '20px' }}>Not Connected</h2>
+                <p style={{ color: '#888888', textAlign: 'center', marginBottom: '30px' }}>Connect your wallet to view your private payment history.</p>
+                <Link href="/dashboard" style={{
+                    padding: '12px 24px',
+                    background: '#ccff00',
+                    color: '#000000',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    textDecoration: 'none'
+                }}>
+                    Go to Dashboard
+                </Link>
+                <MobileNav />
+            </div>
+        );
+    }
 
     return (
         <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', paddingBottom: '100px', color: '#ffffff' }}>
             {/* Header */}
-            <header style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <header style={{ 
+                padding: '16px 20px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                position: 'sticky',
+                top: 0,
+                background: '#111111',
+                zIndex: 10,
+                borderBottom: '1px solid rgba(255,255,255,0.05)'
+            }}>
                 <Link href="/dashboard" style={{ padding: '8px', textDecoration: 'none' }}>
                     <ArrowLeft size={24} color="#ccff00" />
                 </Link>
-                <h1 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#ffffff' }}>History</h1>
-                <button style={{ padding: '8px', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-                    <Download size={22} color="#ccff00" />
-                </button>
+                <h1 style={{ fontSize: '1.125rem', fontWeight: 600 }}>History</h1>
+                <div style={{ width: '40px' }}></div>
             </header>
 
             <PageTransition>
                 <main style={{ padding: '0 20px', maxWidth: '430px', margin: '0 auto' }}>
-                    {/* Summary */}
-                    <div style={{
-                        background: 'linear-gradient(145deg, #1a1a1a 0%, #222222 100%)',
-                        borderRadius: '24px',
-                        padding: '24px',
-                        marginBottom: '24px',
-                        border: '1px solid rgba(204, 255, 0, 0.1)',
-                        marginTop: '20px'
-                    }}>
-                        <p style={{ fontSize: '0.875rem', color: '#999999', marginBottom: '8px' }}>Total Round-up This Month</p>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                            <span style={{ fontSize: '2rem', fontWeight: 700, color: '#ffffff' }}>
-                                ${recentTransactions.reduce((acc, tx) => acc + tx.investedAmount, 0).toFixed(2)}
-                            </span>
-                            <span style={{ fontSize: '0.875rem', color: '#ccff00', fontWeight: 600 }}>+12.3%</span>
+                    {/* Search & Filter */}
+                    <div style={{ marginTop: '20px', display: 'flex', gap: '12px', marginBottom: '24px' }}>
+                        <div style={{
+                            flex: 1,
+                            background: 'rgba(255,255,255,0.05)',
+                            borderRadius: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '0 16px',
+                            border: '1px solid rgba(255,255,255,0.05)'
+                        }}>
+                            <Search size={18} color="#666" />
+                            <input 
+                                type="text" 
+                                placeholder="Search transactions..." 
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    padding: '12px',
+                                    color: 'white',
+                                    fontSize: '0.875rem',
+                                    width: '100%',
+                                    outline: 'none'
+                                }}
+                            />
                         </div>
-                        <p style={{ fontSize: '0.75rem', color: '#666666', marginTop: '8px' }}>
-                            Amount rounded up from {recentTransactions.length} transactions
-                        </p>
+                        <button style={{
+                            width: '44px',
+                            height: '44px',
+                            background: 'rgba(255,255,255,0.05)',
+                            borderRadius: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: '1px solid rgba(255,255,255,0.05)'
+                        }}>
+                            <Filter size={20} color="#ccff00" />
+                        </button>
                     </div>
 
                     {/* Transactions */}
-                    {Object.entries(groupedTransactions).map(([date, txs]) => (
-                        <div key={date} style={{ marginBottom: '24px' }}>
-                            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#666666', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                {formatDate(date)}
-                            </p>
-
-                            <div style={{
-                                background: 'rgba(255,255,255,0.03)',
-                                borderRadius: '24px',
-                                overflow: 'hidden',
-                                border: '1px solid rgba(255,255,255,0.05)'
-                            }}>
-                                {txs.map((tx, i) => (
-                                    <div
-                                        key={tx.id}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            padding: '16px',
-                                            borderBottom: i < txs.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none'
-                                        }}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                            <TransactionIcon icon={tx.icon} />
-                                            <div>
-                                                <p style={{ fontWeight: 500, color: '#ffffff' }}>{tx.merchant}</p>
-                                                <p style={{ fontSize: '0.75rem', color: '#999999' }}>{tx.category}</p>
-                                            </div>
-                                        </div>
-
-                                        <div style={{ textAlign: 'right' }}>
-                                            <p style={{ fontWeight: 600, color: '#ffffff' }}>
-                                                -${tx.originalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {history === undefined ? (
+                            <div style={{ padding: '40px 0', textAlign: 'center' }}>
+                                <div className="animate-pulse" style={{ color: '#888888' }}>Loading your private records...</div>
+                            </div>
+                        ) : history.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#666666' }}>
+                                <p>No stealth transactions found yet.</p>
+                                <p style={{ fontSize: '0.875rem', marginTop: '8px' }}>Start scanning for incoming payments!</p>
+                            </div>
+                        ) : (
+                            history.map((tx: any) => (
+                                <div
+                                    key={tx._id}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '16px',
+                                        background: 'rgba(255,255,255,0.02)',
+                                        borderRadius: '16px',
+                                        border: '1px solid rgba(255,255,255,0.03)'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <TransactionIcon icon={tx.direction === "sent" ? "send" : "receive"} />
+                                        <div>
+                                            <p style={{ fontWeight: 600, color: '#ffffff', fontSize: '0.9375rem' }}>
+                                                {tx.direction === "sent" ? "Sent Stealth Payment" : "Received Stealth Payment"}
                                             </p>
-                                            {tx.investedAmount > 0 && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                                                    <span style={{ width: '6px', height: '6px', background: '#ccff00', borderRadius: '50%' }}></span>
-                                                    <span style={{ fontSize: '0.75rem', color: '#ccff00', fontWeight: 600 }}>
-                                                        +${tx.investedAmount.toFixed(2)}
-                                                    </span>
-                                                </div>
-                                            )}
+                                            <p style={{ fontSize: '0.75rem', color: '#888888' }}>
+                                                {new Date(tx.sentAt || tx.discoveredAt).toLocaleDateString()} at {new Date(tx.sentAt || tx.discoveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
 
-                    {/* Load more */}
-                    <button style={{
-                        width: '100%',
-                        padding: '16px',
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.05)',
-                        borderRadius: '16px',
-                        fontWeight: 600,
-                        color: '#ccff00',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                    }}>
-                        Load More
-                    </button>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <p style={{ 
+                                            fontWeight: 700, 
+                                            color: tx.direction === "sent" ? "#ffffff" : "#ccff00",
+                                            fontSize: '1rem'
+                                        }}>
+                                            {tx.direction === "sent" ? "-" : "+"}${tx.amountFormatted.split(' ')[0]}
+                                        </p>
+                                        <p style={{ fontSize: '0.75rem', textTransform: 'capitalize', color: tx.status === 'confirmed' ? '#4ade80' : '#888888' }}>
+                                            {tx.status}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </main>
             </PageTransition>
 
@@ -129,4 +160,3 @@ export default function HistoryPage() {
         </div>
     );
 }
-

@@ -1,7 +1,8 @@
 "use client";
 
-import { Menu, Search, Bell } from "lucide-react";
+import { Menu, Bell } from "lucide-react";
 import Link from "next/link";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 interface HeaderProps {
     title?: string;
@@ -45,7 +46,12 @@ export default function Header({ title = "VeilPay." }: HeaderProps) {
                     VeilPay<span style={{ color: '#ccff00' }}>.</span>
                 </Link>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <ConnectButton
+                        showBalance={false}
+                        accountStatus="avatar"
+                        chainStatus="icon"
+                    />
                     <button style={{
                         padding: '8px',
                         background: 'transparent',
@@ -64,15 +70,6 @@ export default function Header({ title = "VeilPay." }: HeaderProps) {
                             background: '#ccff00',
                             borderRadius: '50%'
                         }}></span>
-                    </button>
-                    <button style={{
-                        padding: '8px',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        borderRadius: '12px'
-                    }}>
-                        <Search size={22} color="#ccff00" />
                     </button>
                 </div>
             </div>

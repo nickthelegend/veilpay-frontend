@@ -126,6 +126,36 @@ export function scanAnnouncement(
 }
 
 /**
+ * Checks if a stealth announcement belongs to a user.
+ */
+export function checkAnnouncement(
+  ephemeralPubKeyHex: string,
+  viewingPrivKeyHex: string,
+  spendingPubKeyHex: string,
+  targetStealthAddress: string
+): boolean {
+  try {
+    const ephemeralPubKey = hexToBytes(ephemeralPubKeyHex);
+    const viewingPrivKey = hexToBytes(viewingPrivKeyHex);
+    const spendingPubKey = hexToBytes(spendingPubKeyHex);
+
+    const ecdh = secp256k1.getSharedSecret(viewingPrivKey, ephemeralPubKey);
+    const hash = computeSharedHash(ecdh);
+
+    const hashScalar = bytesToBigInt(hash) % n;
+    const S = secp256k1.ProjectivePoint.fromHex(spendingPubKey);
+    const stealthPoint = S.add(G.multiply(hashScalar));
+    const stealthPubkey = stealthPoint.toRawBytes(true);
+
+    const derivedAddress = pubkeyToAddress(stealthPubkey);
+    return derivedAddress.toLowerCase() === targetStealthAddress.toLowerCase();
+  } catch (error) {
+    console.error("Error checking announcement:", error);
+    return false;
+  }
+}
+
+/**
  * Derives the private spending key for a stealth address.
  */
 export function deriveSpendingKey(

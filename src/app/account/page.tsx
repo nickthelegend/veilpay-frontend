@@ -5,11 +5,21 @@ import Link from "next/link";
 import { ArrowLeft, ChevronRight, Bell, Shield, CreditCard, Settings, HelpCircle, LogOut } from "lucide-react";
 import MobileNav from "@/components/MobileNav";
 import PageTransition from "@/components/PageTransition";
-import { demoUser } from "@/lib/mockData";
+import { useAccount, useDisconnect } from "wagmi";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
 export default function AccountPage() {
-    const [extendedRoundUp, setExtendedRoundUp] = useState(demoUser.extendedRoundUp);
-    const [multiplier, setMultiplier] = useState(demoUser.roundUpMultiplier);
+    const { address, isConnected } = useAccount();
+    const { disconnect } = useDisconnect();
+    
+    // Real data from Convex
+    const profile = useQuery(api.users.getProfile,
+        address ? { walletAddress: address } : "skip"
+    );
+
+    const [extendedRoundUp, setExtendedRoundUp] = useState(false);
+    const [multiplier, setMultiplier] = useState(1);
 
     const menuItems = [
         { icon: <CreditCard size={20} />, label: "My Cards", href: "/dashboard", badge: null },
@@ -18,6 +28,26 @@ export default function AccountPage() {
         { icon: <Settings size={20} />, label: "Settings", href: "#", badge: null },
         { icon: <HelpCircle size={20} />, label: "Help", href: "#", badge: null },
     ];
+
+    if (!isConnected) {
+        return (
+            <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ffffff', padding: '20px' }}>
+                <h2 style={{ marginBottom: '20px' }}>Not Connected</h2>
+                <p style={{ color: '#888888', textAlign: 'center', marginBottom: '30px' }}>Connect your wallet to manage your private investment account.</p>
+                <Link href="/dashboard" style={{
+                    padding: '12px 24px',
+                    background: '#ccff00',
+                    color: '#000000',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    textDecoration: 'none'
+                }}>
+                    Go to Dashboard
+                </Link>
+                <MobileNav />
+            </div>
+        );
+    }
 
     return (
         <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', paddingBottom: '100px', color: '#ffffff' }}>
@@ -56,26 +86,26 @@ export default function AccountPage() {
                                 color: '#ccff00',
                                 border: '1px solid rgba(204, 255, 0, 0.2)'
                             }}>
-                                {demoUser.name.split(' ').map(n => n[0]).join('')}
+                                {address?.slice(2, 4).toUpperCase()}
                             </div>
                             <div>
-                                <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>{demoUser.name}</h2>
-                                <p style={{ fontSize: '0.875rem', color: '#999999' }}>{demoUser.email}</p>
+                                <h2 style={{ fontSize: '1.125rem', fontWeight: 700 }}>{profile?.displayName || `User ${address?.slice(-4)}`}</h2>
+                                <p style={{ fontSize: '0.75rem', color: '#999999', fontFamily: 'monospace' }}>{address?.slice(0, 10)}...{address?.slice(-8)}</p>
                             </div>
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                             <div style={{ textAlign: 'center' }}>
-                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Balance</p>
-                                <p style={{ fontWeight: 700 }}>${(demoUser.totalBalance / 1000).toFixed(1)}K</p>
+                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Status</p>
+                                <p style={{ fontWeight: 700, fontSize: '0.875rem' }}>{profile?.isRegistered ? "Verified" : "Guest"}</p>
                             </div>
                             <div style={{ textAlign: 'center' }}>
-                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Invested</p>
-                                <p style={{ fontWeight: 700 }}>${(demoUser.totalInvested / 1000).toFixed(1)}K</p>
+                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Network</p>
+                                <p style={{ fontWeight: 700, fontSize: '0.875rem' }}>Conflux</p>
                             </div>
                             <div style={{ textAlign: 'center' }}>
-                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Returns</p>
-                                <p style={{ fontWeight: 700, color: '#ccff00' }}>+${demoUser.totalReturns.toFixed(0)}</p>
+                                <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '4px' }}>Privacy</p>
+                                <p style={{ fontWeight: 700, color: '#ccff00', fontSize: '0.875rem' }}>Stealth</p>
                             </div>
                         </div>
                     </div>
@@ -229,26 +259,29 @@ export default function AccountPage() {
                     </div>
 
                     {/* Logout */}
-                    <button style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                        padding: '16px',
-                        background: 'rgba(220, 38, 38, 0.1)',
-                        color: '#ef4444',
-                        border: '1px solid rgba(220, 38, 38, 0.2)',
-                        borderRadius: '16px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                    }}>
+                    <button 
+                        onClick={() => disconnect()}
+                        style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            padding: '16px',
+                            background: 'rgba(220, 38, 38, 0.1)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(220, 38, 38, 0.2)',
+                            borderRadius: '16px',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                        }}
+                    >
                         <LogOut size={20} />
-                        Logout
+                        Disconnect Wallet
                     </button>
 
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#666666', marginTop: '20px' }}>
-                        VeilPay v1.0.0 • Demo
+                        VeilPay v1.0.0 • Connected
                     </p>
                 </main>
             </PageTransition>
