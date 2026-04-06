@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, QrCode, Shield, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import MobileNav from "@/components/MobileNav";
 import PageTransition from "@/components/PageTransition";
-import { useAccount } from "wagmi";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { generateStealthAddress, bytesToHex } from "@/lib/stealth";
@@ -34,47 +34,69 @@ export default function PaymentsPage() {
     const recordSent = useMutation(api.payments.recordSentPayment);
     const profile = useQuery(api.users.getProfile, address ? { walletAddress: address } : "skip");
 
+    const { writeContractAsync } = useWriteContract();
+    const { isLoading: isWaitingForTx, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({
+        hash: txHash as `0x${string}`,
+    });
+
     const handleSend = async () => {
         if (!address || !recipient || !amount) return;
         setIsSending(true);
-        try {
-            const provider = new ethers.BrowserProvider((window as any).ethereum);
-            const signer = await provider.getSigner();
+        console.log("🚀 Starting Shielded Payment Process...");
+        console.log("📍 Sender:", address);
+        console.log("📍 Recipient Input:", recipient);
+        console.log("💰 Amount:", amount, "CFX");
 
+        try {
             // 1. Resolve recipient's stealth meta-address
             let stealthMetaAddress = recipient;
             
             // If it looks like a standard wallet address (42 chars), look it up
             if (recipient.length === 42 && recipient.startsWith("0x")) {
+                console.log("🔍 Detected wallet address, looking up stealth identity in registry...");
+                const provider = new ethers.JsonRpcProvider(CONTRACTS.rpc);
                 const registry = new ethers.Contract(CONTRACTS.StealthRegistry, STEALTH_REGISTRY_ABI, provider);
                 const registeredMeta: string = await registry.getStealthMetaAddress(recipient);
                 
                 if (!registeredMeta || registeredMeta === "0x") {
+                    console.error("❌ Registry lookup failed: No stealth identity found for this wallet.");
                     throw new Error("This wallet address has not registered a stealth identity yet.");
                 }
                 stealthMetaAddress = registeredMeta;
+                console.log("✅ Resolved Meta-Address:", stealthMetaAddress);
             } else if (stealthMetaAddress.length < 130) {
-                // Not a wallet address and not a full meta-address
+                console.error("❌ Invalid recipient format.");
                 throw new Error("Invalid recipient. Please provide a wallet address or a 132-char stealth meta-address.");
             }
 
             // 2. Generate one-time stealth address
+            console.log("🔐 Generating one-time stealth address and ephemeral keys...");
             const { stealthAddress, ephemeralPubKey } = generateStealthAddress(stealthMetaAddress);
+            console.log("✨ Computed Stealth Address:", stealthAddress);
+            console.log("🔑 Ephemeral PubKey:", ephemeralPubKey);
 
-            // 3. Submit announcement + transfer on-chain
-            const announcer = new ethers.Contract(CONTRACTS.StealthAnnouncer, STEALTH_ANNOUNCER_ABI, signer);
+            // 3. Submit announcement + transfer on-chain via WAGMI
+            console.log("📡 Requesting signature from wallet for on-chain announcement...");
             const amountWei = ethers.parseEther(amount);
 
-            const tx = await announcer.sendNative(
-                stealthAddress,
-                ephemeralPubKey,
-                "0x", // empty metadata for native CFX
-                { value: amountWei }
-            );
+            // Using wagmi writeContractAsync for better wallet integration & less timeouts
+            const hash = await writeContractAsync({
+                address: CONTRACTS.StealthAnnouncer as `0x${string}`,
+                abi: STEALTH_ANNOUNCER_ABI,
+                functionName: "sendNative",
+                args: [
+                    stealthAddress as `0x${string}`,
+                    ephemeralPubKey as `0x${string}`,
+                    "0x" as `0x${string}`, // empty metadata
+                ],
+                value: amountWei,
+            });
 
-            setTxHash(tx.hash);
+            console.log("✅ Transaction Sent! Hash:", hash);
+            setTxHash(hash);
             
             // 4. Record as pending in Convex immediately
+            console.log("📝 Recording transaction in Convex database...");
             await recordSent({
                 senderWallet: address,
                 recipientStealthMetaAddress: stealthMetaAddress,
@@ -82,21 +104,27 @@ export default function PaymentsPage() {
                 ephemeralPubKey,
                 amount: amountWei.toString(),
                 amountFormatted: `${amount} CFX`,
-                txHash: tx.hash,
+                txHash: hash,
                 status: "pending",
                 sentAt: Date.now(),
                 network: "confluxTestnet",
             });
+            console.log("💾 Convex record created.");
 
-            // 5. Wait for confirmation
-            await tx.wait();
-            setIsSending(false);
         } catch (err: any) {
-            console.error(err);
+            console.error("❌ Payment Process Failed:", err);
             alert(err.message || "Send failed");
             setIsSending(false);
         }
     };
+
+    useEffect(() => {
+        if (isTxSuccess) {
+            console.log("🎊 Transaction Confirmed on Conflux!");
+            setIsSending(false);
+            alert("Shielded Payment Sent & Confirmed!");
+        }
+    }, [isTxSuccess]);
 
     const handleScan = async () => {
         if (!viewPrivKey || !spendPubKey) return;

@@ -4,7 +4,7 @@ export const STEALTH_ANNOUNCER_ADDRESS = "0x37672d29a18F8681F72c8ecB98b99C1F08e3
 export const CONTRACTS = {
   StealthRegistry: STEALTH_REGISTRY_ADDRESS,
   StealthAnnouncer: STEALTH_ANNOUNCER_ADDRESS,
-  rpc: "https://evmtestnet.confluxrpc.com",
+  rpc: "https://testnet.conflux.validationcloud.io/v1/bC52X43z8nneoh11p4JiDs7eQLLw1rqv4URTn-AOpfg",
 };
 
 export const CONFLUX_ESPACE_TESTNET = {
