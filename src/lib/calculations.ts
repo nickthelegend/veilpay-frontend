@@ -12,36 +12,31 @@ export function calculateRoundUp(
     extendedRoundUp: boolean = false,
     multiplier: number = 1
 ): { roundedAmount: number; investedAmount: number } {
-    let roundedAmount: number;
+    const roundedAmount = extendedRoundUp
+        ? (() => {
+            // Extended round-up: round to next $10 if difference would be >10%
+            const nextFive = Math.ceil(originalAmount / 5) * 5;
+            const nextTen = Math.ceil(originalAmount / 10) * 10;
 
-    if (extendedRoundUp) {
-        // Extended round-up: round to next $10 if difference would be >10%
-        const nextFive = Math.ceil(originalAmount / 5) * 5;
-        const nextTen = Math.ceil(originalAmount / 10) * 10;
+            // If basic round-up is less than 10% of original, use next 10
+            const basicDiff = nextFive - originalAmount;
+            const extendedDiff = nextTen - originalAmount;
 
-        // If basic round-up is less than 10% of original, use next 10
-        const basicDiff = nextFive - originalAmount;
-        const extendedDiff = nextTen - originalAmount;
+            if (basicDiff / originalAmount < 0.10 && extendedDiff / originalAmount <= 0.20) {
+                return nextTen;
+            } else {
+                return nextFive;
+            }
+        })()
+        : Math.ceil(originalAmount / 5) * 5;
 
-        if (basicDiff / originalAmount < 0.10 && extendedDiff / originalAmount <= 0.20) {
-            roundedAmount = nextTen;
-        } else {
-            roundedAmount = nextFive;
-        }
-    } else {
-        // Basic round-up: round to nearest $5
-        roundedAmount = Math.ceil(originalAmount / 5) * 5;
-    }
+    // Adjust if already a round number
+    const finalRoundedAmount = roundedAmount === originalAmount ? roundedAmount + 5 : roundedAmount;
 
-    // If original amount is already a round number
-    if (roundedAmount === originalAmount) {
-        roundedAmount = originalAmount + 5;
-    }
-
-    let investedAmount = (roundedAmount - originalAmount) * multiplier;
+    const investedAmount = (finalRoundedAmount - originalAmount) * multiplier;
 
     return {
-        roundedAmount: roundedAmount + (investedAmount - (roundedAmount - originalAmount)),
+        roundedAmount: finalRoundedAmount + (investedAmount - (finalRoundedAmount - originalAmount)),
         investedAmount: Number(investedAmount.toFixed(2)),
     };
 }
@@ -102,7 +97,7 @@ export function calculateInvestmentGrowth(
     let currentValue = initialDeposit;
 
     for (let year = 1; year <= years; year++) {
-        for (let month = 1; month <= 12; month++) {
+        for (let m = 1; m <= 12; m++) {
             currentValue = currentValue * (1 + monthlyRate) + monthlyContribution;
             totalInvested += monthlyContribution;
         }

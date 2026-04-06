@@ -10,7 +10,27 @@
 - **🔄 Automated Round-ups**: Automatically round up every transaction to the nearest $5 (or custom multiplier) and invest the difference.
 - **🧠 AI-Powered Insights**: Get personalized investment recommendations and spending analysis based on your financial patterns.
 - **📈 Growth Tracking**: Visualize your portfolio performance with real-time analytics and year-end projections.
-- **🎨 Acid Green Design**: Sleek, high-performance UI with a modern "Acid Green" and dark theme for the ultimate Web3 experience.
+- **🎨 Acid Green Design**: 
+    - High-contrast, premium "Acid Green" and dark theme.
+    - Custom micro-animations for transaction feedback.
+    - Glassmorphic components and fluid layouts.
+
+---
+
+## 🛠️ Technical Deep Dive
+
+### 🕵️ Stealth Address Scanning (`src/lib/stealth.ts`)
+VeilPay implements a client-side scanning mechanism to ensure user privacy. When a user logs in:
+1.  The app fetches indexed `announcements` from Convex.
+2.  The browser executes `scanAnnouncement` using the user's **private viewing key**.
+3.  If a match is found (shared secret matches the `viewTag`), the payment is revealed to the user.
+4.  The server (Convex) only stores the results *after* the client has decrypted them, ensuring the server never knows your viewing keys.
+
+### 🔌 Convex Backend Integration
+We use **Convex** for real-time data management:
+- **Indexing**: Polling on-chain events via `scripts/pollIndexer.ts`.
+- **Reactive UI**: Frontend components use `useQuery` to stay in sync with the latest payments and announcements.
+- **Checkpoints**: `scanCheckpoints` track how far the chain has been scanned to optimize performance.
 
 ---
 
