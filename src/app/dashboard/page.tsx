@@ -6,7 +6,6 @@ import MobileNav from "@/components/MobileNav";
 import BalanceCard from "@/components/BalanceCard";
 import TransactionIcon from "@/components/TransactionIcon";
 import PageTransition from "@/components/PageTransition";
-import AIInsights from "@/components/AIInsights";
 import { useAccount, useBalance } from "wagmi";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -192,10 +191,6 @@ export default function DashboardPage() {
                     </div>
 
 
-                    {/* AI Insights Card */}
-                    <div style={{ marginTop: '24px' }}>
-                        <AIInsights />
-                    </div>
 
                     {/* Recent transactions */}
                     <div style={{ marginTop: '24px' }}>
