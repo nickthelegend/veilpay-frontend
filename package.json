@@ -10,6 +10,7 @@
     "indexer": "npx tsx scripts/pollIndexer.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@rainbow-me/rainbowkit": "^2.2.10",

@@ -5,19 +5,18 @@ import Link from "next/link";
 import { ArrowLeft, MoreVertical, CreditCard as CardIcon, Lock, RefreshCw, Trash2, Eye, EyeOff, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import MobileNav from "@/components/MobileNav";
-import CreditCard from "@/components/CreditCard";
+import VirtualCard from "@/components/VirtualCard";
 import TransactionIcon from "@/components/TransactionIcon";
 import PageTransition from "@/components/PageTransition";
-import { cards, recentTransactions } from "@/lib/mockData";
+import { useAccount } from "wagmi";
+import { recentTransactions } from "@/lib/mockData";
 
 export default function CardDetailPage() {
-    const params = useParams();
-    const cardId = params.id as string;
-    const card = cards.find(c => c.id === cardId);
+    const { isConnected } = useAccount();
     const [showBalance, setShowBalance] = useState(true);
     const [showMenu, setShowMenu] = useState(false);
 
-    if (!card) {
+    if (!isConnected) {
         return (
             <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ textAlign: 'center' }}>
@@ -117,9 +116,9 @@ export default function CardDetailPage() {
 
             <PageTransition>
                 <main style={{ padding: '0 20px', maxWidth: '430px', margin: '0 auto' }}>
-                    {/* Card Display */}
+                    {/* Live Virtual Card */}
                     <div style={{ marginBottom: '24px', marginTop: '20px' }}>
-                        <CreditCard card={card} variant="full" clickable={false} />
+                        <VirtualCard />
                     </div>
 
                     {/* Quick Actions */}

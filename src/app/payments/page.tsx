@@ -7,19 +7,18 @@ import PageTransition from "@/components/PageTransition";
 import { useAccount } from "wagmi";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { deriveStealthAddress, hexToBytes, bytesToHex } from "@/lib/stealth";
+import { generateStealthAddress, bytesToHex } from "@/lib/stealth";
 import { ethers } from "ethers";
-import { STEALTH_ANNOUNCER_ADDRESS, CONTRACTS } from "@/lib/contracts";
+import { CONTRACTS } from "@/lib/contracts";
 import { useAnnouncementScanner } from "@/hooks/useAnnouncementScanner";
 
 const ANNOUNCER_ABI = [
-  "function sendNative(uint256 schemeId, address stealthAddress, bytes ephemeralPubKey, bytes metadata) payable",
-  "function registerStealthMetaAddress(uint256 schemeId, bytes spendingPubKey, bytes viewingPubKey)"
+  "function sendNative(address stealthAddress, bytes calldata ephemeralPubKey, bytes calldata metadata) external payable",
+  "function sendERC20(address token, address stealthAddress, uint256 amount, bytes calldata ephemeralPubKey, bytes calldata metadata) external"
 ];
 
 const REGISTRY_ABI = [
-  "function registerStealthMetaAddress(uint256 schemeId, bytes spendingPubKey, bytes viewingPubKey)",
-  "function getStealthMetaAddress(address registrant, uint256 schemeId) view returns (bytes)"
+  "function getStealthMetaAddress(address user) external view returns (bytes memory)"
 ];
 
 export default function PaymentsPage() {
@@ -35,6 +34,8 @@ export default function PaymentsPage() {
     // Scan State
     const [viewPrivKey, setViewPrivKey] = useState("");
     const [spendPubKey, setSpendPubKey] = useState("");
+    const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
+    const [showKeyModal, setShowKeyModal] = useState(false);
     const { scan, scanResult, checkpoint } = useAnnouncementScanner(address);
 
     const recordSent = useMutation(api.payments.recordSentPayment);
@@ -44,38 +45,40 @@ export default function PaymentsPage() {
         if (!address || !recipient || !amount) return;
         setIsSending(true);
         try {
-            // Recipient 'recipient' is a stealth meta-address (hex)
-            // Parse spending and viewing keys from meta-address (66 bytes = 132 hex chars)
-            const metaAddress = recipient.startsWith("0x") ? recipient.slice(2) : recipient;
-            if (metaAddress.length < 132) throw new Error("Invalid meta-address length");
-            
-            const spendingPubKey = hexToBytes(metaAddress.slice(0, 66));
-            const viewingPubKey = hexToBytes(metaAddress.slice(66, 132));
-
-            // Derive stealth address
-            const { address: stealthAddr, ephemeralPubkey: R } = deriveStealthAddress(spendingPubKey, viewingPubKey);
-
             const provider = new ethers.BrowserProvider((window as any).ethereum);
             const signer = await provider.getSigner();
-            const announcer = new ethers.Contract(STEALTH_ANNOUNCER_ADDRESS, ANNOUNCER_ABI, signer);
 
-            const value = ethers.parseEther(amount);
+            // 1. Look up recipient's stealth meta-address from registry
+            const registry = new ethers.Contract(CONTRACTS.StealthRegistry, REGISTRY_ABI, provider);
+            const stealthMetaAddress: string = await registry.getStealthMetaAddress(recipient);
+
+            if (!stealthMetaAddress || stealthMetaAddress === "0x") {
+                throw new Error("Recipient has not registered a stealth address. Ask them to register first.");
+            }
+
+            // 2. Generate one-time stealth address
+            const { stealthAddress, ephemeralPubKey } = generateStealthAddress(stealthMetaAddress);
+
+            // 3. Submit announcement + transfer on-chain
+            const announcer = new ethers.Contract(CONTRACTS.StealthAnnouncer, ANNOUNCER_ABI, signer);
+            const amountWei = ethers.parseEther(amount);
+
             const tx = await announcer.sendNative(
-                1, // schemeId
-                stealthAddr,
-                R,
+                stealthAddress,
+                ephemeralPubKey,
                 "0x", // empty metadata for native CFX
-                { value }
+                { value: amountWei }
             );
 
             setTxHash(tx.hash);
             
+            // 4. Record as pending in Convex immediately
             await recordSent({
                 senderWallet: address,
-                recipientStealthMetaAddress: recipient,
-                computedStealthAddress: stealthAddr,
-                ephemeralPubKey: bytesToHex(R),
-                amount: value.toString(),
+                recipientStealthMetaAddress: stealthMetaAddress,
+                computedStealthAddress: stealthAddress,
+                ephemeralPubKey,
+                amount: amountWei.toString(),
                 amountFormatted: `${amount} CFX`,
                 txHash: tx.hash,
                 status: "pending",
@@ -83,6 +86,7 @@ export default function PaymentsPage() {
                 network: "confluxTestnet",
             });
 
+            // 5. Wait for confirmation
             await tx.wait();
             setIsSending(false);
         } catch (err: any) {
@@ -94,8 +98,12 @@ export default function PaymentsPage() {
 
     const handleScan = async () => {
         if (!viewPrivKey || !spendPubKey) return;
+        setShowKeyModal(false);
         try {
-            await scan(viewPrivKey, spendPubKey);
+            await scan(viewPrivKey, spendPubKey, (current, total) => {
+                setScanProgress({ current, total });
+            });
+            setViewPrivKey(""); // Clear secret from state immediately after use
         } catch (err: any) {
             alert("Scan failed: " + err.message);
         }
@@ -248,49 +256,29 @@ export default function PaymentsPage() {
                             )}
                         </div>
                     ) : (
+                        <>
                         <div style={{ animation: 'fadeIn 0.3s ease-in' }}>
-                            <div style={{ background: 'rgba(204, 255, 0, 0.05)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(204, 255, 0, 0.1)', marginBottom: '24px' }}>
+                            <div style={{ background: 'var(--primary-muted)', borderRadius: '20px', padding: '24px', border: '1px solid var(--border-primary)', marginBottom: '24px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                                    <Shield size={24} color="#ccff00" />
+                                    <Shield size={24} color="var(--primary)" />
                                     <h3 style={{ fontWeight: 700 }}>Secure Scanner</h3>
                                 </div>
-                                <p style={{ fontSize: '0.875rem', color: '#999999', lineHeight: 1.5 }}>
-                                    Your viewing key is used to decrypt incoming payments directed to your stealth addresses. Scanning happens entirely in your browser.
+                                <p style={{ fontSize: '0.875rem', color: 'var(--foreground-muted)', lineHeight: 1.5 }}>
+                                    Scanning detects private payments directed to you. Enter your keys below to synchronize your private vault.
                                 </p>
                             </div>
 
-                            <div style={{ marginBottom: '16px' }}>
-                                <label style={{ display: 'block', fontSize: '0.875rem', color: '#888888', marginBottom: '8px' }}>Viewing Private Key (Keep secret!)</label>
-                                <input 
-                                    type="password"
-                                    value={viewPrivKey}
-                                    onChange={(e) => setViewPrivKey(e.target.value)}
-                                    placeholder="Enter your viewing secret (hex)"
-                                    style={{
-                                        width: '100%',
-                                        background: 'rgba(255,255,255,0.03)',
-                                        border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: '16px',
-                                        padding: '16px',
-                                        color: 'white',
-                                        fontSize: '0.875rem',
-                                        outline: 'none',
-                                        fontFamily: 'monospace'
-                                    }}
-                                />
-                            </div>
-
-                            <div style={{ marginBottom: '32px' }}>
-                                <label style={{ display: 'block', fontSize: '0.875rem', color: '#888888', marginBottom: '8px' }}>Spending Public Key (Required for derivation)</label>
+                            <div style={{ marginBottom: '24px' }}>
+                                <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--foreground-muted)', marginBottom: '8px' }}>Spending Public Key</label>
                                 <input 
                                     type="text"
                                     value={spendPubKey}
                                     onChange={(e) => setSpendPubKey(e.target.value)}
-                                    placeholder="Enter your spending pubkey (hex)"
+                                    placeholder="Enter spending pubkey (0x...)"
                                     style={{
                                         width: '100%',
-                                        background: 'rgba(255,255,255,0.03)',
-                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        background: 'var(--input)',
+                                        border: '1px solid var(--border)',
                                         borderRadius: '16px',
                                         padding: '16px',
                                         color: 'white',
@@ -302,14 +290,14 @@ export default function PaymentsPage() {
                             </div>
 
                             <button 
-                                onClick={handleScan}
-                                disabled={scanResult.isScanning || !viewPrivKey || !spendPubKey}
+                                onClick={() => setShowKeyModal(true)}
+                                disabled={scanResult.isScanning || !spendPubKey}
                                 style={{
                                     width: '100%',
                                     padding: '18px',
                                     borderRadius: '16px',
-                                    background: 'white',
-                                    color: '#111111',
+                                    background: 'var(--primary)',
+                                    color: 'var(--primary-foreground)',
                                     border: 'none',
                                     fontWeight: 700,
                                     fontSize: '1.0625rem',
@@ -318,34 +306,126 @@ export default function PaymentsPage() {
                                     justifyContent: 'center',
                                     gap: '12px',
                                     cursor: 'pointer',
-                                    opacity: (scanResult.isScanning || !viewPrivKey || !spendPubKey) ? 0.5 : 1
+                                    opacity: (scanResult.isScanning || !spendPubKey) ? 0.5 : 1
                                 }}
                             >
                                 {scanResult.isScanning ? <Loader2 size={24} className="animate-spin" /> : <QrCode size={22} />}
-                                {scanResult.isScanning ? "Scanning Chain..." : "Scan for Payments"}
+                                {scanResult.isScanning ? `Scanning (${scanProgress.current}/${scanProgress.total})...` : "Scan for Payments"}
                             </button>
 
                             {checkpoint && (
                                 <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                                    <p style={{ fontSize: '0.75rem', color: '#666666' }}>
-                                        Last scanned up to block: <span style={{ color: '#888888' }}>{checkpoint.lastScannedBlock}</span>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>
+                                        Last scanned: Block {checkpoint.lastScannedBlock ?? "never"} 
+                                        {checkpoint.totalAnnouncements > 0 && ` • Checked ${checkpoint.totalAnnouncements} announcements`}
                                     </p>
-                                    <p style={{ fontSize: '0.75rem', color: '#666666', marginTop: '4px' }}>
-                                        Matched <span style={{ color: '#ccff00' }}>{checkpoint.matchedCount}</span> payments so far.
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginTop: '4px' }}>
+                                        Matched <span style={{ color: 'var(--primary)' }}>{checkpoint.matchedCount ?? 0}</span> private payments total.
                                     </p>
                                 </div>
                             )}
 
                             {scanResult.matched > 0 && (
-                                <div style={{ marginTop: '24px', padding: '16px', background: 'rgba(204, 255, 0, 0.1)', borderRadius: '12px', border: '1px solid rgba(204, 255, 0, 0.2)', display: 'flex', gap: '12px' }}>
-                                    <CheckCircle2 size={20} color="#ccff00" />
+                                <div style={{ marginTop: '24px', padding: '16px', background: 'var(--success-muted)', borderRadius: '12px', border: '1px solid var(--success)', display: 'flex', gap: '12px' }}>
+                                    <CheckCircle2 size={20} color="var(--success)" />
                                     <div>
-                                        <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ccff00' }}>Scan Complete</p>
-                                        <p style={{ fontSize: '0.75rem', color: '#888888', marginTop: '4px' }}>Found {scanResult.matched} new payments!</p>
+                                        <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--success)' }}>Scan Complete</p>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginTop: '4px' }}>Found {scanResult.matched} new private payment(s)! Check your inbox.</p>
                                     </div>
                                 </div>
                             )}
+                            
+                            {scanResult.isScanning === false && scanResult.scanned > 0 && scanResult.matched === 0 && (
+                                <div style={{ marginTop: '24px', textAlign: 'center' }}>
+                                    <p style={{ fontSize: '0.875rem', color: 'var(--foreground-muted)' }}>
+                                        Scan complete. No new payments found                                    </p>
+                                </div>
+                            )}
                         </div>
+
+                        {/* Viewing Key Modal */}
+                        {showKeyModal && (
+                            <div style={{
+                                position: 'fixed',
+                                inset: 0,
+                                background: 'rgba(0,0,0,0.8)',
+                                backdropFilter: 'blur(10px)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                zIndex: 1000,
+                                padding: '20px'
+                            }}>
+                                <div style={{
+                                    background: 'var(--card)',
+                                    width: '100%',
+                                    maxWidth: '380px',
+                                    borderRadius: '24px',
+                                    padding: '32px',
+                                    border: '1px solid var(--border)'
+                                }} className="animate-slide-up">
+                                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '12px', color: 'white' }}>Final Authorization</h3>
+                                    <p style={{ fontSize: '0.875rem', color: 'var(--foreground-muted)', marginBottom: '24px', lineHeight: 1.5 }}>
+                                        Enter your <strong style={{ color: 'var(--primary)' }}>Viewing Private Key</strong> to decrypt announcements. This key never leaves your browser.
+                                    </p>
+                                    
+                                    <input 
+                                        type="password"
+                                        placeholder="0x..."
+                                        value={viewPrivKey}
+                                        onChange={(e) => setViewPrivKey(e.target.value)}
+                                        style={{
+                                            width: '100%',
+                                            background: 'var(--input)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '16px',
+                                            padding: '16px',
+                                            color: 'white',
+                                            fontSize: '0.875rem',
+                                            outline: 'none',
+                                            fontFamily: 'monospace',
+                                            marginBottom: '24px'
+                                        }}
+                                    />
+                                    
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                        <button 
+                                            onClick={() => setShowKeyModal(false)}
+                                            style={{
+                                                flex: 1,
+                                                padding: '16px',
+                                                borderRadius: '14px',
+                                                background: 'transparent',
+                                                color: 'white',
+                                                border: '1px solid var(--border)',
+                                                fontWeight: 600,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            onClick={handleScan}
+                                            disabled={!viewPrivKey}
+                                            style={{
+                                                flex: 1,
+                                                padding: '16px',
+                                                borderRadius: '14px',
+                                                background: 'var(--primary)',
+                                                color: 'var(--primary-foreground)',
+                                                border: 'none',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                opacity: !viewPrivKey ? 0.5 : 1
+                                            }}
+                                        >
+                                            Authorize
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        </>
                     )}
                 </main>
             </PageTransition>

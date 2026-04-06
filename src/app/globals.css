@@ -1,22 +1,78 @@
 @import "tailwindcss";
 
 :root {
+  /* Core VeilPay palette */
   --primary: #ccff00;
   --primary-hover: #b8e600;
+  --primary-muted: rgba(204, 255, 0, 0.12);
   --primary-foreground: #111111;
+
+  /* Backgrounds */
   --background: #111111;
-  --foreground: #ccff00;
+  --background-secondary: #161616;
+  --background-tertiary: #1a1a1a;
+
+  /* Foregrounds */
+  --foreground: #ffffff;
+  --foreground-muted: #888888;
+  --foreground-dim: #555555;
+  --text-primary: #ffffff;
+  --text-muted: #888888;
+
+  /* Cards and surfaces */
   --card: #1a1a1a;
-  --card-foreground: #f0f0f0;
+  --card-hover: #1f1f1f;
+  --card-foreground: #ffffff;
+
+  /* Borders */
   --border: #2a2a2a;
+  --border-hover: #3a3a3a;
+  --border-primary: rgba(204, 255, 0, 0.3);
+
+  /* Semantic colors */
+  --success: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.12);
+  --warning: #f59e0b;
+  --warning-muted: rgba(245, 158, 11, 0.12);
+  --destructive: #ef4444;
+  --destructive-muted: rgba(239, 68, 68, 0.12);
+  --info: #3b82f6;
+  --info-muted: rgba(59, 130, 246, 0.12);
+
+  /* Input / form */
+  --input: #1a1a1a;
+  --input-border: #2a2a2a;
+  --input-focus: #ccff00;
+  --ring: rgba(204, 255, 0, 0.4);
+
+  /* Muted */
   --muted: #1e1e1e;
   --muted-foreground: #888888;
+
+  /* Accent */
   --accent: #ccff00;
   --accent-foreground: #111111;
-  --destructive: #ff4444;
-  --ring: #ccff00;
+
+  /* Others used in the project */
   --cream: #111111;
   --white: #ffffff;
+  --mint: #ccff00;
+  --green: #22c55e;
+  --green-dark: #16a34a;
+  --primary-light: #d8ff4d;
+
+  /* Radius */
+  --radius: 0.75rem;
+  --radius-sm: 0.375rem;
+  --radius-lg: 1rem;
+
+  /* Chart colors */
+  --chart-1: #ccff00;
+  --chart-2: #22c55e;
+  --chart-3: #3b82f6;
+  --chart-4: #f59e0b;
+  --chart-5: #ef4444;
+  --chart-6: #8b5cf6;
 }
 
 * {

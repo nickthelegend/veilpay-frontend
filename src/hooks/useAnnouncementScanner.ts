@@ -29,17 +29,23 @@ export function useAnnouncementScanner(walletAddress: string | undefined) {
     { fromBlock: checkpoint?.lastScannedBlock ?? 0 }
   );
 
-  const scan = useCallback(async (viewingPrivKey: string, spendingPubKey: string) => {
+  const scan = useCallback(async (
+    viewingPrivKey: string, 
+    spendingPubKey: string,
+    onProgress?: (current: number, total: number) => void
+  ) => {
     if (!walletAddress || !getAnnouncements) return;
     
     setScanResult(prev => ({ ...prev, isScanning: true }));
     let matched = 0;
+    const total = getAnnouncements.length;
 
-    for (const announcement of getAnnouncements) {
-      const isMatch = checkAnnouncement(
+    for (let i = 0; i < total; i++) {
+      const announcement = getAnnouncements[i];
+      if (onProgress) onProgress(i + 1, total);
+      const { matched: isMatch } = checkAnnouncement(
         announcement.ephemeralPubKey,
         viewingPrivKey,
-        spendingPubKey,
         announcement.stealthAddress
       );
       
