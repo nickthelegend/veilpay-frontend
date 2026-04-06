@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import NetworkGuard from "@/components/NetworkGuard";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -36,7 +37,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} ${spaceGrotesk.variable} antialiased bg-[#111111] text-white`}>
         <Providers>
-          {children}
+          <NetworkGuard>
+            {children}
+          </NetworkGuard>
         </Providers>
       </body>
     </html>

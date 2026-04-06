@@ -11,6 +11,12 @@ import { useAccount, useBalance } from "wagmi";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { formatEther } from "ethers";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { STEALTH_REGISTRY_ABI } from "@/lib/abi";
+import { CONTRACTS } from "@/lib/contracts";
+import { generateStealthKeys } from "@/lib/stealth";
+import { useMutation } from "convex/react";
+import { useState, useEffect } from "react";
 
 export default function DashboardPage() {
     const { address, isConnected } = useAccount();
@@ -40,6 +46,56 @@ export default function DashboardPage() {
     const totalInvested = totalSent;
     const totalReturns = totalReceived;
 
+    const { writeContractAsync } = useWriteContract();
+    const recordRegistration = useMutation(api.users.recordRegistration);
+    const upsertProfile = useMutation(api.users.upsertProfile);
+    const [isRegistering, setIsRegistering] = useState(false);
+
+    const handleRegister = async () => {
+        if (!address) return;
+        
+        try {
+            setIsRegistering(true);
+            const keys = generateStealthKeys();
+            
+            // 1. Register on-chain
+            const hash = await writeContractAsync({
+                address: CONTRACTS.StealthRegistry as `0x${string}`,
+                abi: STEALTH_REGISTRY_ABI,
+                functionName: "registerStealthMetaAddress",
+                args: [keys.stealthMetaAddress as `0x${string}`],
+            });
+
+            // 2. Save keys locally (in a real app, use deterministic derivation)
+            localStorage.setItem(`veilpay_keys_${address}`, JSON.stringify(keys));
+
+            // 3. Update Convex
+            await upsertProfile({
+                walletAddress: address,
+                spendingPubKey: keys.spendingPubKey,
+                viewingPubKey: keys.viewingPubKey,
+                isRegistered: true,
+                registrationTxHash: hash,
+            });
+
+            await recordRegistration({
+                walletAddress: address,
+                spendingPubKey: keys.spendingPubKey,
+                viewingPubKey: keys.viewingPubKey,
+                stealthMetaAddress: keys.stealthMetaAddress,
+                txHash: hash,
+                blockNumber: 0, // Will be updated by indexer
+            });
+
+            alert("Stealth Identity Registered Successfully!");
+        } catch (error) {
+            console.error("Registration failed:", error);
+            alert("Registration failed. See console for details.");
+        } finally {
+            setIsRegistering(false);
+        }
+    };
+
     return (
         <div className="mobile-container" style={{ background: '#111111', minHeight: '100vh', paddingBottom: '100px' }}>
             <Header />
@@ -67,18 +123,23 @@ export default function DashboardPage() {
                             <h2 style={{ fontWeight: 600, color: '#ffffff', fontSize: '1rem' }}>
                                 Your Stealth Identity
                             </h2>
-                            <button style={{
-                                width: '32px',
-                                height: '32px',
-                                background: 'rgba(204, 255, 0, 0.2)',
-                                border: 'none',
-                                borderRadius: '10px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer'
-                            }}>
-                                <Plus size={18} color="#ccff00" />
+                            <button 
+                                onClick={handleRegister}
+                                disabled={isRegistering || profile?.isRegistered}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    background: profile?.isRegistered ? 'rgba(255,255,255,0.05)' : 'rgba(204, 255, 0, 0.2)',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: profile?.isRegistered ? 'default' : 'pointer',
+                                    opacity: isRegistering ? 0.5 : 1
+                                }}
+                            >
+                                <Plus size={18} color={profile?.isRegistered ? "#444" : "#ccff00"} />
                             </button>
                         </div>
 

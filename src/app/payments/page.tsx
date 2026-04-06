@@ -12,14 +12,7 @@ import { ethers } from "ethers";
 import { CONTRACTS } from "@/lib/contracts";
 import { useAnnouncementScanner } from "@/hooks/useAnnouncementScanner";
 
-const ANNOUNCER_ABI = [
-  "function sendNative(address stealthAddress, bytes calldata ephemeralPubKey, bytes calldata metadata) external payable",
-  "function sendERC20(address token, address stealthAddress, uint256 amount, bytes calldata ephemeralPubKey, bytes calldata metadata) external"
-];
-
-const REGISTRY_ABI = [
-  "function getStealthMetaAddress(address user) external view returns (bytes memory)"
-];
+import { STEALTH_REGISTRY_ABI, STEALTH_ANNOUNCER_ABI } from "@/lib/abi";
 
 export default function PaymentsPage() {
     const { address, isConnected } = useAccount();
@@ -48,19 +41,28 @@ export default function PaymentsPage() {
             const provider = new ethers.BrowserProvider((window as any).ethereum);
             const signer = await provider.getSigner();
 
-            // 1. Look up recipient's stealth meta-address from registry
-            const registry = new ethers.Contract(CONTRACTS.StealthRegistry, REGISTRY_ABI, provider);
-            const stealthMetaAddress: string = await registry.getStealthMetaAddress(recipient);
-
-            if (!stealthMetaAddress || stealthMetaAddress === "0x") {
-                throw new Error("Recipient has not registered a stealth address. Ask them to register first.");
+            // 1. Resolve recipient's stealth meta-address
+            let stealthMetaAddress = recipient;
+            
+            // If it looks like a standard wallet address (42 chars), look it up
+            if (recipient.length === 42 && recipient.startsWith("0x")) {
+                const registry = new ethers.Contract(CONTRACTS.StealthRegistry, STEALTH_REGISTRY_ABI, provider);
+                const registeredMeta: string = await registry.getStealthMetaAddress(recipient);
+                
+                if (!registeredMeta || registeredMeta === "0x") {
+                    throw new Error("This wallet address has not registered a stealth identity yet.");
+                }
+                stealthMetaAddress = registeredMeta;
+            } else if (stealthMetaAddress.length < 130) {
+                // Not a wallet address and not a full meta-address
+                throw new Error("Invalid recipient. Please provide a wallet address or a 132-char stealth meta-address.");
             }
 
             // 2. Generate one-time stealth address
             const { stealthAddress, ephemeralPubKey } = generateStealthAddress(stealthMetaAddress);
 
             // 3. Submit announcement + transfer on-chain
-            const announcer = new ethers.Contract(CONTRACTS.StealthAnnouncer, ANNOUNCER_ABI, signer);
+            const announcer = new ethers.Contract(CONTRACTS.StealthAnnouncer, STEALTH_ANNOUNCER_ABI, signer);
             const amountWei = ethers.parseEther(amount);
 
             const tx = await announcer.sendNative(
