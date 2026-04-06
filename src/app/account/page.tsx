@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, Bell, Shield, CreditCard, Settings, HelpCircle, LogOut } from "lucide-react";
+import { ArrowLeft, ChevronRight, Bell, Shield, CreditCard, Settings, HelpCircle, LogOut, Copy, Eye, EyeOff } from "lucide-react";
 import MobileNav from "@/components/MobileNav";
 import PageTransition from "@/components/PageTransition";
 import { useAccount, useDisconnect } from "wagmi";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useEffect } from "react";
 
 export default function AccountPage() {
     const { address, isConnected } = useAccount();
@@ -20,6 +21,15 @@ export default function AccountPage() {
 
     const [extendedRoundUp, setExtendedRoundUp] = useState(false);
     const [multiplier, setMultiplier] = useState(1);
+    const [showKeys, setShowKeys] = useState(false);
+    const [storedKeys, setStoredKeys] = useState<any>(null);
+
+    useEffect(() => {
+        if (address) {
+            const keys = localStorage.getItem(`veilpay_keys_${address}`);
+            if (keys) setStoredKeys(JSON.parse(keys));
+        }
+    }, [address]);
 
     const menuItems = [
         { icon: <CreditCard size={20} />, label: "My Cards", href: "/dashboard", badge: null },
@@ -110,98 +120,73 @@ export default function AccountPage() {
                         </div>
                     </div>
 
-                    {/* Round-up Settings */}
-                    <div style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        borderRadius: '24px',
-                        padding: '20px',
-                        marginBottom: '20px',
-                        border: '1px solid rgba(255,255,255,0.05)'
-                    }}>
-                        <h3 style={{ fontWeight: 600, color: '#ffffff', marginBottom: '16px' }}>VeilPay Settings</h3>
-
-                        {/* Extended toggle */}
+                    {/* Stealth Identity Details */}
+                    {profile?.isRegistered && (
                         <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '16px',
-                            background: 'rgba(255,255,255,0.02)',
-                            borderRadius: '16px',
-                            marginBottom: '12px',
-                            border: '1px solid rgba(255,255,255,0.05)'
+                            background: 'rgba(204, 255, 0, 0.05)',
+                            borderRadius: '24px',
+                            padding: '24px',
+                            marginBottom: '20px',
+                            border: '1px solid rgba(204, 255, 0, 0.2)'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    background: 'rgba(204, 255, 0, 0.1)',
-                                    borderRadius: '12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '1.2rem'
-                                }}>
-                                    ⚡
-                                </div>
-                                <div>
-                                    <p style={{ fontWeight: 500, color: '#ffffff' }}>Aggressive Round-up</p>
-                                    <p style={{ fontSize: '0.75rem', color: '#999999' }}>Above 10% round-up</p>
-                                </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                                <h3 style={{ fontWeight: 700, color: '#ccff00', fontSize: '0.9375rem' }}>Stealth Identity</h3>
+                                <button 
+                                    onClick={() => setShowKeys(!showKeys)}
+                                    style={{ background: 'none', border: 'none', color: '#ccff00', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', fontWeight: 600 }}
+                                >
+                                    {showKeys ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    {showKeys ? "Hide Keys" : "Reveal Keys"}
+                                </button>
                             </div>
-                            <button
-                                onClick={() => setExtendedRoundUp(!extendedRoundUp)}
-                                style={{
-                                    position: 'relative',
-                                    width: '48px',
-                                    height: '28px',
-                                    background: extendedRoundUp ? '#ccff00' : '#333333',
-                                    borderRadius: '14px',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    transition: 'background 0.2s'
-                                }}
-                            >
-                                <span style={{
-                                    position: 'absolute',
-                                    top: '3px',
-                                    left: extendedRoundUp ? '23px' : '3px',
-                                    width: '22px',
-                                    height: '22px',
-                                    background: extendedRoundUp ? '#000000' : '#ffffff',
-                                    borderRadius: '50%',
-                                    transition: 'left 0.2s',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.15)'
-                                }}></span>
-                            </button>
-                        </div>
 
-                        {/* Multiplier */}
-                        <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                            <p style={{ fontWeight: 500, color: '#ffffff', marginBottom: '4px' }}>Round-up Multiplier</p>
-                            <p style={{ fontSize: '0.75rem', color: '#999999', marginBottom: '12px' }}>Multiplier for faster accumulation</p>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                                {[1, 2, 5, 10].map((opt) => (
-                                    <button
-                                        key={opt}
-                                        onClick={() => setMultiplier(opt)}
-                                        style={{
-                                            padding: '10px',
-                                            borderRadius: '10px',
-                                            border: 'none',
-                                            fontWeight: 700,
-                                            cursor: 'pointer',
-                                            background: multiplier === opt ? '#ccff00' : 'rgba(255,255,255,0.05)',
-                                            color: multiplier === opt ? '#000000' : '#999999',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        {opt}x
-                                    </button>
-                                ))}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div>
+                                    <p style={{ fontSize: '0.75rem', color: '#888888', marginBottom: '6px' }}>Spending Public Key (For Scanning)</p>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <div style={{ flex: 1, background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '12px', fontSize: '0.75rem', fontFamily: 'monospace', color: '#ffffff', wordBreak: 'break-all' }}>
+                                            {profile.spendingPubKey || "0x..."}
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(profile.spendingPubKey || "");
+                                                alert("Copied!");
+                                            }}
+                                            style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '12px', padding: '10px', color: '#ccff00', cursor: 'pointer' }}
+                                        >
+                                            <Copy size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {showKeys && storedKeys && (
+                                    <div style={{ animation: 'fadeIn 0.3s ease-in' }}>
+                                        <p style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '6px', fontWeight: 600 }}>Viewing Private Key (Keep Secret!)</p>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <div style={{ flex: 1, background: 'rgba(239, 68, 68, 0.1)', padding: '12px', borderRadius: '12px', fontSize: '0.75rem', fontFamily: 'monospace', color: '#ff8080', wordBreak: 'break-all' }}>
+                                                {storedKeys.viewingPrivKey}
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(storedKeys.viewingPrivKey || "");
+                                                    alert("Copied Private Key!");
+                                                }}
+                                                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '12px', padding: '10px', color: '#ccff00', cursor: 'pointer' }}
+                                            >
+                                                <Copy size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {showKeys && !storedKeys && (
+                                    <p style={{ fontSize: '0.75rem', color: '#888888', fontStyle: 'italic' }}>
+                                        Keys not found on this device. Re-syncing logic coming soon.
+                                    </p>
+                                )}
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Menu */}
                     <div style={{

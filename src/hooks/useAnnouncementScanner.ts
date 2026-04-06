@@ -13,8 +13,8 @@ interface ScanResult {
 }
 
 export function useAnnouncementScanner(walletAddress: string | undefined) {
-  const [scanResult, setScanResult] = useState<ScanResult>({
-    matched: 0, scanned: 0, isScanning: false, lastScannedBlock: 0
+  const [scanResult, setScanResult] = useState<ScanResult & { matchedPayments: any[] }>({
+    matched: 0, scanned: 0, isScanning: false, lastScannedBlock: 0, matchedPayments: []
   });
 
   const checkpoint = useQuery(
@@ -38,6 +38,7 @@ export function useAnnouncementScanner(walletAddress: string | undefined) {
     
     setScanResult(prev => ({ ...prev, isScanning: true }));
     let matched = 0;
+    const matchedPayments: any[] = [];
     const total = getAnnouncements.length;
 
     for (let i = 0; i < total; i++) {
@@ -50,10 +51,15 @@ export function useAnnouncementScanner(walletAddress: string | undefined) {
       );
       
       if (isMatch) {
-        const amountFormatted = announcement.tokenAddress
-          ? `${ethers.formatUnits(announcement.amount, 18)} TOKEN`
-          : `${ethers.formatEther(announcement.amount)} CFX`;
-          
+        const foundPayment = {
+            ...announcement,
+            amountFormatted: announcement.tokenAddress
+              ? `${ethers.formatUnits(announcement.amount, 18)} TOKEN`
+              : `${ethers.formatEther(announcement.amount)} CFX`
+        };
+        
+        matchedPayments.push(foundPayment);
+
         await recordReceived({
           ownerWallet: walletAddress,
           announcementId: announcement._id,
@@ -61,7 +67,7 @@ export function useAnnouncementScanner(walletAddress: string | undefined) {
           ephemeralPubKey: announcement.ephemeralPubKey,
           tokenAddress: announcement.tokenAddress,
           amount: announcement.amount,
-          amountFormatted,
+          amountFormatted: foundPayment.amountFormatted,
           status: "unspent",
           discoveredAt: Date.now(),
           blockNumber: announcement.blockNumber,
@@ -84,8 +90,16 @@ export function useAnnouncementScanner(walletAddress: string | undefined) {
       scanned: getAnnouncements.length,
       isScanning: false,
       lastScannedBlock: latestBlock,
+      matchedPayments
     });
   }, [walletAddress, getAnnouncements, checkpoint, updateCheckpoint, recordReceived]);
 
-  return { scan, scanResult, checkpoint };
+  const removePayment = useCallback((announcementId: string) => {
+    setScanResult(prev => ({
+      ...prev,
+      matchedPayments: prev.matchedPayments.filter(p => p._id !== announcementId)
+    }));
+  }, []);
+
+  return { scan, scanResult, checkpoint, removePayment };
 }

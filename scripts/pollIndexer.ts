@@ -14,8 +14,9 @@ async function main() {
   console.log("Starting VeilPay Indexer...");
   const provider = new ethers.JsonRpcProvider(CONTRACTS.rpc);
   
-  // Starting block — set to deployment block if known
-  let fromBlock = Number(await convex.query(api.announcements.getLatestBlock)) || 61000000; 
+  // Starting block — jumped to current range on Conflux eSpace Testnet
+  const latestIndexed = Number(await convex.query(api.announcements.getLatestBlock));
+  let fromBlock = latestIndexed ? latestIndexed - 10 : 248340000; 
 
   while (true) {
     try {

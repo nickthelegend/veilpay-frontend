@@ -7,7 +7,7 @@ import PageTransition from "@/components/PageTransition";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { generateStealthAddress, bytesToHex } from "@/lib/stealth";
+import { generateStealthAddress, bytesToHex, checkAnnouncement } from "@/lib/stealth";
 import { ethers } from "ethers";
 import { CONTRACTS } from "@/lib/contracts";
 import { useAnnouncementScanner } from "@/hooks/useAnnouncementScanner";
@@ -26,10 +26,12 @@ export default function PaymentsPage() {
 
     // Scan State
     const [viewPrivKey, setViewPrivKey] = useState("");
+    const [lastUsedViewingKey, setLastUsedViewingKey] = useState("");
     const [spendPubKey, setSpendPubKey] = useState("");
     const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
     const [showKeyModal, setShowKeyModal] = useState(false);
-    const { scan, scanResult, checkpoint } = useAnnouncementScanner(address);
+    const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+    const { scan, scanResult, checkpoint, removePayment } = useAnnouncementScanner(address);
 
     const recordSent = useMutation(api.payments.recordSentPayment);
     const profile = useQuery(api.users.getProfile, address ? { walletAddress: address } : "skip");
@@ -128,6 +130,7 @@ export default function PaymentsPage() {
 
     const handleScan = async () => {
         if (!viewPrivKey || !spendPubKey) return;
+        setLastUsedViewingKey(viewPrivKey);
         setShowKeyModal(false);
         try {
             await scan(viewPrivKey, spendPubKey, (current, total) => {
@@ -301,27 +304,28 @@ export default function PaymentsPage() {
                     ) : (
                         <>
                         <div style={{ animation: 'fadeIn 0.3s ease-in' }}>
-                            <div style={{ background: 'var(--primary-muted)', borderRadius: '20px', padding: '24px', border: '1px solid var(--border-primary)', marginBottom: '24px' }}>
+                            <div style={{ background: 'rgba(204, 255, 0, 0.05)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(204, 255, 0, 0.2)', marginBottom: '24px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                                    <Shield size={24} color="var(--primary)" />
+                                    <Shield size={24} color="#ccff00" />
                                     <h3 style={{ fontWeight: 700 }}>Secure Scanner</h3>
                                 </div>
-                                <p style={{ fontSize: '0.875rem', color: 'var(--foreground-muted)', lineHeight: 1.5 }}>
-                                    Scanning detects private payments directed to you. Enter your keys below to synchronize your private vault.
+                                <p style={{ fontSize: '0.875rem', color: '#888888', lineHeight: 1.5 }}>
+                                    Enter your keys to find private payments. 
+                                    <strong> Important:</strong> To withdraw, you'll need your viewing key to decrypt and the stealth address will need a tiny bit of CFX for gas.
                                 </p>
                             </div>
 
                             <div style={{ marginBottom: '24px' }}>
-                                <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--foreground-muted)', marginBottom: '8px' }}>Spending Public Key</label>
+                                <label style={{ display: 'block', fontSize: '0.875rem', color: '#888888', marginBottom: '8px' }}>Spending Public Key (from Registered Identity)</label>
                                 <input 
                                     type="text"
                                     value={spendPubKey}
                                     onChange={(e) => setSpendPubKey(e.target.value)}
-                                    placeholder="Enter spending pubkey (0x...)"
+                                    placeholder="0x..."
                                     style={{
                                         width: '100%',
-                                        background: 'var(--input)',
-                                        border: '1px solid var(--border)',
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
                                         borderRadius: '16px',
                                         padding: '16px',
                                         color: 'white',
@@ -339,8 +343,8 @@ export default function PaymentsPage() {
                                     width: '100%',
                                     padding: '18px',
                                     borderRadius: '16px',
-                                    background: 'var(--primary)',
-                                    color: 'var(--primary-foreground)',
+                                    background: '#ccff00',
+                                    color: '#111111',
                                     border: 'none',
                                     fontWeight: 700,
                                     fontSize: '1.0625rem',
@@ -353,35 +357,112 @@ export default function PaymentsPage() {
                                 }}
                             >
                                 {scanResult.isScanning ? <Loader2 size={24} className="animate-spin" /> : <QrCode size={22} />}
-                                {scanResult.isScanning ? `Scanning (${scanProgress.current}/${scanProgress.total})...` : "Scan for Payments"}
+                                {scanResult.isScanning ? `Scanning...` : "Scan for Payments"}
                             </button>
 
-                            {checkpoint && (
-                                <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                                    <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>
-                                        Last scanned: Block {checkpoint.lastScannedBlock ?? "never"} 
-                                        {checkpoint.totalAnnouncements > 0 && ` • Checked ${checkpoint.totalAnnouncements} announcements`}
-                                    </p>
-                                    <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginTop: '4px' }}>
-                                        Matched <span style={{ color: 'var(--primary)' }}>{checkpoint.matchedCount ?? 0}</span> private payments total.
-                                    </p>
-                                </div>
-                            )}
+                            {/* Found Payments List */}
+                            {scanResult.matchedPayments && scanResult.matchedPayments.length > 0 && (
+                                <div style={{ marginTop: '32px' }}>
+                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', color: '#ccff00' }}>Discovered Payments</h3>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                        {scanResult.matchedPayments.map((p: any, i: number) => (
+                                            <div key={i} style={{ 
+                                                background: 'rgba(255,255,255,0.03)', 
+                                                border: '1px solid rgba(255,255,255,0.1)', 
+                                                borderRadius: '16px', 
+                                                padding: '16px' 
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                                    <div>
+                                                        <p style={{ fontSize: '0.75rem', color: '#888888' }}>Stealth Address</p>
+                                                        <p style={{ fontSize: '0.875rem', fontWeight: 600, fontFamily: 'monospace' }}>{p.stealthAddress.slice(0, 10)}...{p.stealthAddress.slice(-8)}</p>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <p style={{ fontSize: '0.75rem', color: '#888888' }}>Amount</p>
+                                                        <p style={{ fontSize: '1rem', fontWeight: 700, color: '#ccff00' }}>{p.amountFormatted}</p>
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={async () => {
+                                                        if (withdrawingId) return;
+                                                        try {
+                                                            setWithdrawingId(p._id);
+                                                            console.log("🔓 Deriving stealth private key for withdrawal...");
+                                                            const { matched, stealthPrivKey } = checkAnnouncement(p.ephemeralPubKey, lastUsedViewingKey, p.stealthAddress);
+                                                            if (!matched || !stealthPrivKey) throw new Error("Could not derive private key");
+                                                            
+                                                            console.log("💸 Initiating sweep from stealth address to main wallet...");
+                                                            const provider = new ethers.JsonRpcProvider(CONTRACTS.rpc);
+                                                            const stealthWallet = new ethers.Wallet(stealthPrivKey, provider);
+                                                            
+                                                            const balance = await provider.getBalance(stealthWallet.address);
+                                                            // Use a safer gas price for eSpace Testnet
+                                                            const feeData = await provider.getFeeData();
+                                                            const gasPrice = feeData.gasPrice || ethers.parseUnits("1", "gwei");
+                                                            const gasLimit = 21000n;
+                                                            const gasCost = gasPrice * gasLimit;
+                                                            
+                                                            if (balance <= gasCost) {
+                                                                throw new Error(`Insufficient funds for gas. Balance: ${ethers.formatEther(balance)} CFX, Required: ${ethers.formatEther(gasCost)} CFX. Please send a tiny bit of CFX to ${stealthWallet.address} first.`);
+                                                            }
 
-                            {scanResult.matched > 0 && (
-                                <div style={{ marginTop: '24px', padding: '16px', background: 'var(--success-muted)', borderRadius: '12px', border: '1px solid var(--success)', display: 'flex', gap: '12px' }}>
-                                    <CheckCircle2 size={20} color="var(--success)" />
-                                    <div>
-                                        <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--success)' }}>Scan Complete</p>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginTop: '4px' }}>Found {scanResult.matched} new private payment(s)! Check your inbox.</p>
+                                                            const tx = await stealthWallet.sendTransaction({
+                                                                to: address,
+                                                                value: balance - gasCost,
+                                                                gasPrice,
+                                                                gasLimit
+                                                            });
+                                                            
+                                                            console.log("⏳ Waiting for withdrawal confirmation...", tx.hash);
+                                                            await tx.wait();
+                                                            
+                                                            console.log("✅ Withdrawal Confirmed!");
+                                                            alert(`Withdrawal Success! Funds are now in your wallet.`);
+                                                            removePayment(p._id);
+                                                        } catch (err: any) {
+                                                            console.error("❌ Withdrawal Failed:", err);
+                                                            alert(err.message);
+                                                        } finally {
+                                                            setWithdrawingId(null);
+                                                        }
+                                                    }}
+                                                    disabled={!!withdrawingId}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '12px',
+                                                        borderRadius: '12px',
+                                                        background: withdrawingId === p._id ? 'rgba(204, 255, 0, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                        color: withdrawingId === p._id ? '#ccff00' : 'white',
+                                                        border: '1px solid rgba(255,255,255,0.1)',
+                                                        fontSize: '0.875rem',
+                                                        fontWeight: 600,
+                                                        cursor: withdrawingId ? 'default' : 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '8px'
+                                                    }}
+                                                >
+                                                    {withdrawingId === p._id ? (
+                                                        <>
+                                                            <Loader2 size={16} className="animate-spin" />
+                                                            Withdrawing...
+                                                        </>
+                                                    ) : (
+                                                        "Withdraw to Wallet"
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}
-                            
-                            {scanResult.isScanning === false && scanResult.scanned > 0 && scanResult.matched === 0 && (
+
+                            {checkpoint && (
                                 <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                                    <p style={{ fontSize: '0.875rem', color: 'var(--foreground-muted)' }}>
-                                        Scan complete. No new payments found                                    </p>
+                                    <p style={{ fontSize: '0.75rem', color: '#888888' }}>
+                                        Last scanned: Block {checkpoint.lastScannedBlock ?? "never"} 
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -400,16 +481,16 @@ export default function PaymentsPage() {
                                 padding: '20px'
                             }}>
                                 <div style={{
-                                    background: 'var(--card)',
+                                    background: '#1a1a1a',
                                     width: '100%',
                                     maxWidth: '380px',
                                     borderRadius: '24px',
                                     padding: '32px',
-                                    border: '1px solid var(--border)'
+                                    border: '1px solid rgba(255,255,255,0.1)'
                                 }} className="animate-slide-up">
-                                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '12px', color: 'white' }}>Final Authorization</h3>
-                                    <p style={{ fontSize: '0.875rem', color: 'var(--foreground-muted)', marginBottom: '24px', lineHeight: 1.5 }}>
-                                        Enter your <strong style={{ color: 'var(--primary)' }}>Viewing Private Key</strong> to decrypt announcements. This key never leaves your browser.
+                                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '12px', color: 'white' }}>Authorization Required</h3>
+                                    <p style={{ fontSize: '0.875rem', color: '#888888', marginBottom: '24px', lineHeight: 1.5 }}>
+                                        Enter your <strong>Viewing Private Key</strong> to decrypt announcements locally.
                                     </p>
                                     
                                     <input 
@@ -419,8 +500,8 @@ export default function PaymentsPage() {
                                         onChange={(e) => setViewPrivKey(e.target.value)}
                                         style={{
                                             width: '100%',
-                                            background: 'var(--input)',
-                                            border: '1px solid var(--border)',
+                                            background: 'rgba(255,255,255,0.03)',
+                                            border: '1px solid rgba(255,255,255,0.1)',
                                             borderRadius: '16px',
                                             padding: '16px',
                                             color: 'white',
@@ -440,7 +521,7 @@ export default function PaymentsPage() {
                                                 borderRadius: '14px',
                                                 background: 'transparent',
                                                 color: 'white',
-                                                border: '1px solid var(--border)',
+                                                border: '1px solid rgba(255,255,255,0.1)',
                                                 fontWeight: 600,
                                                 cursor: 'pointer'
                                             }}
@@ -454,15 +535,15 @@ export default function PaymentsPage() {
                                                 flex: 1,
                                                 padding: '16px',
                                                 borderRadius: '14px',
-                                                background: 'var(--primary)',
-                                                color: 'var(--primary-foreground)',
+                                                background: '#ccff00',
+                                                color: '#111111',
                                                 border: 'none',
                                                 fontWeight: 700,
                                                 cursor: 'pointer',
                                                 opacity: !viewPrivKey ? 0.5 : 1
                                             }}
                                         >
-                                            Authorize
+                                            Authorize Scan
                                         </button>
                                     </div>
                                 </div>
