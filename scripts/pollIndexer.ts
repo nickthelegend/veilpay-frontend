@@ -1,6 +1,6 @@
 import { ConvexReactClient } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { indexAnnouncementsFromBlock } from "../src/lib/indexer";
+import { indexAnnouncementsFromBlock, indexDarkPoolEvents } from "../src/lib/indexer";
 import * as dotenv from "dotenv";
 import { ethers } from "ethers";
 import { CONTRACTS } from "../src/lib/contracts";
@@ -24,7 +24,8 @@ async function main() {
       if (fromBlock < currentBlock) {
         console.log(`Indexing from ${fromBlock} to ${currentBlock}...`);
         const result = await indexAnnouncementsFromBlock(convex, fromBlock, currentBlock);
-        console.log(`Indexed ${result.indexed} new announcements.`);
+        await indexDarkPoolEvents(convex, fromBlock, currentBlock);
+        console.log(`Indexed ${result.indexed} new announcements and checked for dark pool matches.`);
         fromBlock = result.latestBlock + 1;
       }
     } catch (error) {

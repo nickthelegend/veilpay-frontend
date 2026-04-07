@@ -116,11 +116,10 @@ export const insertSettlement = mutation({
     fillAmount: v.string(),
     settlementPrice: v.string(),
     txHash: v.string(),
-    blockNumber: v.number(),
     timestamp: v.number(),
   },
   handler: async (ctx, args) => {
-    // Check if already exists
+    // 1. Check if already exists
     const existing = await ctx.db
       .query("darkPoolSettlements")
       .withIndex("by_commitment_a", (q) => q.eq("commitmentA", args.commitmentA))
@@ -128,7 +127,22 @@ export const insertSettlement = mutation({
       .unique();
 
     if (!existing) {
-      await ctx.db.insert("darkPoolSettlements", args);
+      await ctx.db.insert("darkPoolSettlements", {
+        ...args,
+        blockNumber: 0, // Placeholder as indexer might not provide it yet
+      });
+
+      // 2. Update order statuses to "filled"
+      const orders = await Promise.all([
+        ctx.db.query("darkOrders").withIndex("by_commitment", q => q.eq("commitment", args.commitmentA)).unique(),
+        ctx.db.query("darkOrders").withIndex("by_commitment", q => q.eq("commitment", args.commitmentB)).unique(),
+      ]);
+
+      for (const order of orders) {
+        if (order) {
+          await ctx.db.patch(order._id, { status: "filled", updatedAt: Date.now() });
+        }
+      }
     }
   },
 });
@@ -141,5 +155,40 @@ export const getRecentSettlements = query({
       .withIndex("by_timestamp")
       .order("desc")
       .take(args.limit);
+  },
+});
+// ----- Global Statistics -----
+
+export const getGlobalStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const settlements = await ctx.db.query("darkPoolSettlements").collect();
+    const orders = await ctx.db
+      .query("darkOrders")
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "active"),
+          q.eq(q.field("status"), "partially_filled")
+        )
+      )
+      .collect();
+
+    // Calculate Total Volume
+    let totalVolumeWei = BigInt(0);
+    for (const s of settlements) {
+      totalVolumeWei += BigInt(s.fillAmount);
+    }
+
+    // Convert to human readable (approx 18 decimals)
+    const totalVolume = Number(totalVolumeWei) / 1e18;
+
+    // Calculate "Active Nodes" (Unique participating wallets)
+    const uniqueOwners = new Set(orders.map((o) => o.owner));
+    const activeNodes = uniqueOwners.size;
+
+    return {
+      totalVolume,
+      activeNodes,
+    };
   },
 });

@@ -23,6 +23,7 @@ export default function Header({ title = "VeilPay." }: HeaderProps) {
         { icon: <User size={20} />, label: "Profile", href: "/account" },
         { icon: <CreditCard size={20} />, label: "Dashboard", href: "/dashboard" },
         { icon: <Clock size={20} />, label: "History", href: "/history" },
+        { icon: <HelpCircle size={20} />, label: "Faucet", href: "/faucet" },
         { icon: <Shield size={20} />, label: "Privacy Settings", href: "/account" },
         { icon: <Settings size={20} />, label: "App Settings", href: "/account" },
         { icon: <HelpCircle size={20} />, label: "Help & Support", href: "/account" },

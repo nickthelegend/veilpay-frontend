@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
     "@aztec/bb.js": "^0.65.1",
+    "@noble/ciphers": "^2.1.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@noir-lang/noir_js": "^1.0.0-beta.15",

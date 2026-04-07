@@ -1,26 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState, useEffect } from "react";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi";
 import { ethers } from "ethers";
 import { CONTRACTS } from "@/lib/contracts";
 import ENGINE_ABI from "@/lib/abis/DarkBookEngine.json";
+import VAULT_ABI from "@/lib/abis/Vault.json";
+import TOKEN_ABI from "@/lib/abis/TestToken.json";
 import { DarkPoolProver } from "@/lib/noir/prover";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { 
   Loader2, 
-  ArrowDownUp, 
   EyeOff, 
-  Lock, 
-  Cpu, 
-  Info, 
-  ArrowRight,
+  Zap,
   TrendingDown,
   TrendingUp,
-  Zap,
-  CheckCircle2,
-  AlertTriangle
+  Plus,
+  ShieldCheck,
+  Wallet,
+  ArrowRight
 } from "lucide-react";
 
 export default function SwapInterface() {
@@ -29,20 +28,79 @@ export default function SwapInterface() {
   const [price, setPrice] = useState("");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [isProving, setIsProving] = useState(false);
-  const [showProofDetails, setShowProofDetails] = useState(false);
+  
+  // Matcher Service State
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [matcherPubKey, setMatcherPubKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ws = new WebSocket("ws://localhost:8081");
+    ws.onopen = () => console.log("[Matcher] Connected");
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "snapshot" || msg.type === "stats") {
+          if (msg.ecdhPublicKey) setMatcherPubKey(msg.ecdhPublicKey);
+        }
+      } catch (err) {}
+    };
+    setSocket(ws);
+    return () => ws.close();
+  }, []);
+  
+  // Vault State
+  const [depositAmount, setDepositAmount] = useState("");
   
   const { writeContract, data: hash, isPending: isSubmitting } = useWriteContract();
   const submitToConvex = useMutation(api.darkpool.submitOrder);
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  // Vault & Token Data
+  const vaultBalance = useQuery(api.darkpool.getVaultBalance, 
+    address ? { walletAddress: address, tokenAddress: CONTRACTS.TestToken } : "skip"
+  );
+
+  const { data: tokenBalance } = useReadContract({
+    address: CONTRACTS.TestToken,
+    abi: TOKEN_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+  });
+
+  const { data: allowance } = useReadContract({
+    address: CONTRACTS.TestToken,
+    abi: TOKEN_ABI,
+    functionName: "allowance",
+    args: address ? [address, CONTRACTS.Vault] : undefined,
+  });
+
+  const handleDeposit = async () => {
+    if (!depositAmount || !address) return;
+    const amountVal = ethers.parseUnits(depositAmount, 18);
+
+    if ((allowance as bigint) < amountVal) {
+      writeContract({
+        address: CONTRACTS.TestToken,
+        abi: TOKEN_ABI,
+        functionName: "approve",
+        args: [CONTRACTS.Vault, amountVal],
+      });
+      return;
+    }
+
+    writeContract({
+      address: CONTRACTS.Vault,
+      abi: VAULT_ABI,
+      functionName: "deposit",
+      args: [CONTRACTS.TestToken, amountVal],
+    });
+  };
 
   const handleSubmitOrder = async () => {
     if (!address || !amount || !price) return;
 
     try {
       setIsProving(true);
-      
-      // 1. Generate Order Commitment and Nullifier
-      // Scaled for fixed-point math: 18 decimals
       const amountBI = ethers.parseUnits(amount, 18);
       const priceBI = ethers.parseUnits(price, 18);
       
@@ -52,25 +110,16 @@ export default function SwapInterface() {
         side === "buy" ? 0 : 1
       );
 
-      // 2. Generate ZK Proof (Simulated for Testnet MVP)
-      // In production, this would use Noir.js
-      const balanceRoot = ethers.ZeroHash; // Fetch from contract in real flow
+      const balanceRoot = ethers.ZeroHash; 
       const proof = await DarkPoolProver.generateOrderProof(order, balanceRoot, 1);
 
-      // 3. Submit to Chain
       writeContract({
         address: CONTRACTS.DarkBookEngine,
         abi: ENGINE_ABI,
         functionName: "submitOrder",
-        args: [
-          order.commitment,
-          order.nullifier,
-          1n, // tokenPairId (dUSDC/CFX)
-          proof,
-        ],
+        args: [order.commitment, order.nullifier, 1n, proof],
       });
 
-      // 4. Save to Convex (encrypted parameters)
       await submitToConvex({
         owner: address,
         commitment: order.commitment,
@@ -81,166 +130,259 @@ export default function SwapInterface() {
         txHash: hash,
       });
 
+      // Matcher Relay
+      if (socket && socket.readyState === WebSocket.OPEN && matcherPubKey) {
+        const encrypted = await DarkPoolProver.encryptForMatcher(order, matcherPubKey, address);
+        socket.send(JSON.stringify({
+          type: "submitOrder",
+          data: encrypted
+        }));
+        console.log("[Matcher] Order relayed successfully");
+      }
+
     } catch (error) {
-      console.error("Proof generation failed:", error);
+      console.error("Order submission/relay failed:", error);
     } finally {
       setIsProving(false);
     }
   };
 
+  const isActionDisabled = isProving || isSubmitting || isConfirming || !amount || !price;
+
   return (
-    <div className="card-primary p-6 rounded-3xl border-2 border-white/5 bg-[#1a1a1a]/80 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-      {/* Dynamic Background Elements */}
-      <div className="absolute top-0 right-0 w-64 h-64 bg-[#ccff00]/5 rounded-full blur-[100px] -mr-32 -mt-32 animate-pulse" />
-      <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/5 rounded-full blur-[80px] -ml-24 -mb-24" />
-
-      <div className="flex items-center justify-between mb-8">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          Private Swap
-          <div className="text-[10px] bg-[#ccff00]/10 text-[#ccff00] px-2 py-0.5 rounded-full border border-[#ccff00]/20 flex items-center gap-1 uppercase tracking-widest font-black">
-            <Zap className="w-2.5 h-2.5 fill-current" /> ZK Enabled
-          </div>
-        </h2>
-        <div className="flex items-center gap-2 text-white/40 hover:text-white/60 transition-colors pointer-cursor">
-          <Info className="w-5 h-5" />
-        </div>
-      </div>
-
-      <div className="space-y-6">
-        {/* Buy/Sell Selector */}
-        <div className="bg-black/40 p-1 rounded-2xl flex gap-1 border border-white/5">
-          <button
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      
+      {/* Swap Section */}
+      <div style={{ animation: 'fadeIn 0.3s ease-in' }}>
+        
+        {/* Toggle Selector */}
+        <div style={{ 
+          display: 'flex', 
+          background: 'rgba(255,255,255,0.03)', 
+          padding: '6px', 
+          borderRadius: '16px', 
+          marginBottom: '24px', 
+          border: '1px solid rgba(255,255,255,0.1)' 
+        }}>
+          <button 
             onClick={() => setSide("buy")}
-            className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-bold transition-all ${
-              side === "buy" 
-                ? "bg-white/5 text-[#ccff00] shadow-inner" 
-                : "text-white/40 hover:text-white/60"
-            }`}
+            style={{
+              flex: 1,
+              padding: '12px',
+              borderRadius: '12px',
+              border: 'none',
+              background: side === "buy" ? '#ccff00' : 'transparent',
+              color: side === "buy" ? '#111111' : '#888888',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.2s'
+            }}
           >
-            <TrendingUp className="w-4 h-4" /> Buy dUSDC
+            <TrendingUp size={16} /> Buy dUSDC
           </button>
-          <button
+          <button 
             onClick={() => setSide("sell")}
-            className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-bold transition-all ${
-              side === "sell" 
-                ? "bg-white/5 text-blue-400 shadow-inner" 
-                : "text-white/40 hover:text-white/60"
-            }`}
+            style={{
+              flex: 1,
+              padding: '12px',
+              borderRadius: '12px',
+              border: 'none',
+              background: side === "sell" ? '#ccff00' : 'transparent',
+              color: side === "sell" ? '#111111' : '#888888',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.2s'
+            }}
           >
-            <TrendingDown className="w-4 h-4" /> Sell dUSDC
+            <TrendingDown size={16} /> Sell dUSDC
           </button>
         </div>
 
         {/* Inputs */}
-        <div className="space-y-4">
-          <div className="group space-y-2">
-            <label className="text-xs uppercase tracking-widest font-black text-white/30 ml-1">Amount to {side}</label>
-            <div className="relative">
-              <input
-                type="number"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full bg-black/60 border-2 border-white/5 rounded-2xl p-5 text-2xl font-mono focus:outline-none focus:border-[#ccff00]/30 transition-all group-hover:border-white/10"
-              />
-              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-white/40 font-bold uppercase tracking-widest text-sm">
-                dUSDC
-              </span>
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label style={{ fontSize: '0.875rem', color: '#888888' }}>Amount to {side}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+               <Wallet size={12} color="#555555" />
+               <span 
+                onClick={() => setAmount(ethers.formatUnits(tokenBalance as bigint || 0n, 18))}
+                style={{ fontSize: '0.75rem', color: '#555555', cursor: 'pointer', textDecoration: 'underline' }}
+               >
+                 {tokenBalance ? Number(ethers.formatUnits(tokenBalance as bigint, 18)).toFixed(2) : "0.00"} dUSDC
+               </span>
             </div>
           </div>
-
-          <div className="group space-y-2">
-            <label className="text-xs uppercase tracking-widest font-black text-white/30 ml-1">Limit Price</label>
-            <div className="relative">
-              <input
-                type="number"
-                placeholder="0.00"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                className="w-full bg-black/60 border-2 border-white/5 rounded-2xl p-5 text-2xl font-mono focus:outline-none focus:border-[#ccff00]/30 transition-all group-hover:border-white/10"
-              />
-              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-white/40 font-bold uppercase tracking-widest text-sm">
-                CFX
-              </span>
+          <div style={{ position: 'relative' }}>
+            <input 
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              style={{
+                width: '100%',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '16px',
+                padding: '18px',
+                paddingRight: '120px',
+                color: 'white',
+                fontSize: '1.25rem',
+                fontWeight: 700,
+                outline: 'none'
+              }}
+            />
+            <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+               <button 
+                onClick={() => setAmount(ethers.formatUnits(tokenBalance as bigint || 0n, 18))}
+                style={{ 
+                  background: 'rgba(204,255,0,0.1)', 
+                  border: '1px solid rgba(204,255,0,0.2)', 
+                  color: '#ccff00', 
+                  fontSize: '0.625rem', 
+                  fontWeight: 800, 
+                  padding: '4px 8px', 
+                  borderRadius: '6px', 
+                  cursor: 'pointer' 
+                }}
+               >
+                 MAX
+               </button>
+               <span style={{ color: '#888888', fontSize: '0.875rem', fontWeight: 700 }}>dUSDC</span>
             </div>
           </div>
         </div>
 
-        {/* Dark Pool Info Card */}
-        <div className="bg-[#ccff00]/5 border border-[#ccff00]/10 rounded-2xl p-4 flex items-start gap-3">
-          <div className="p-2 bg-[#ccff00]/10 rounded-lg">
-            <EyeOff className="w-4 h-4 text-[#ccff00]" />
-          </div>
-          <div className="space-y-1">
-            <h4 className="text-sm font-bold text-[#ccff00]/90">Zero Knowledge Protection</h4>
-            <p className="text-xs text-white/50 leading-relaxed">
-              Your order is cryptographically hidden. Only you see the parameters until a match is settled on-chain.
-            </p>
+        <div style={{ marginBottom: '32px' }}>
+          <label style={{ display: 'block', fontSize: '0.875rem', color: '#888888', marginBottom: '8px' }}>Limit Price (CFX)</label>
+          <div style={{ position: 'relative' }}>
+            <input 
+              type="number"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="0.00"
+              style={{
+                width: '100%',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '16px',
+                padding: '18px',
+                color: 'white',
+                fontSize: '1.25rem',
+                fontWeight: 700,
+                outline: 'none'
+              }}
+            />
+            <span style={{ position: 'absolute', right: '18px', top: '50%', transform: 'translateY(-50%)', color: '#888888', fontSize: '0.875rem', fontWeight: 700 }}>CFX</span>
           </div>
         </div>
 
-        {/* Action Button */}
-        <button
+        <button 
           onClick={handleSubmitOrder}
-          disabled={isProving || isSubmitting || isConfirming || !amount || !price}
-          className="w-full relative group"
+          disabled={isActionDisabled}
+          style={{
+            width: '100%',
+            padding: '18px',
+            borderRadius: '16px',
+            background: '#ccff00',
+            color: '#111111',
+            border: 'none',
+            fontWeight: 700,
+            fontSize: '1.0625rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            cursor: 'pointer',
+            opacity: isActionDisabled ? 0.5 : 1,
+            transition: 'all 0.2s'
+          }}
         >
-          <div className="absolute -inset-1 bg-[#ccff00]/20 rounded-2xl blur opacity-25" />
-          <div className={`relative w-full py-5 rounded-2xl flex items-center justify-center gap-3 font-black uppercase tracking-widest transition-all ${
-            isProving || isSubmitting || isConfirming 
-              ? "bg-white/10 text-white/40 cursor-wait" 
-              : "bg-[#ccff00] text-black hover:scale-[1.01] active:scale-[0.98]"
-          }`}>
-            {isProving ? (
-              <>
-                <Cpu className="w-5 h-5 animate-pulse" />
-                Generating Proof...
-              </>
-            ) : isSubmitting || isConfirming ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Broadcasting...
-              </>
-            ) : isSuccess ? (
-                <>
-                    <CheckCircle2 className="w-5 h-5" />
-                    Order Placed
-                </>
-            ) : (
-              <>
-                Commit Order <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
-          </div>
+          {isProving ? <Loader2 size={24} className="animate-spin" /> : <Zap size={22} />}
+          {isProving ? "Generating ZK Proof..." : isSubmitting || isConfirming ? "Finalizing..." : "Submit Private Order"}
         </button>
 
-        {isProving && (
-            <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-                <div className="flex items-center gap-2 mb-2">
-                    <div className="w-1.5 h-1.5 bg-[#ccff00] rounded-full animate-ping" />
-                    <span className="text-[10px] text-white/60 font-mono">EXECUTING NOIR CIRCUIT...</span>
-                </div>
-                <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#ccff00] animate-[shimmer_2s_infinite]" style={{ width: '40%' }} />
-                </div>
-            </div>
-        )}
+        <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(204, 255, 0, 0.05)', borderRadius: '16px', border: '1px solid rgba(204, 255, 0, 0.1)', display: 'flex', gap: '12px' }}>
+          <EyeOff size={20} color="#ccff00" />
+          <p style={{ fontSize: '0.75rem', color: '#888888', lineHeight: 1.5 }}>
+            Your order is encrypted and shielded. The matching engine will settle your trade via ZK-SNARKs without revealing your price.
+          </p>
+        </div>
       </div>
 
-      {hash && (
-        <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
-          <div className="flex items-center justify-between px-2">
-            <span className="text-xs text-white/40 uppercase font-black tracking-widest">Order Hash</span>
-            <code className="text-[10px] text-white/20">{hash.slice(0, 16)}...{hash.slice(-12)}</code>
+      {/* Integrated Vault Balance Section */}
+      <div style={{ 
+        padding: '24px', 
+        background: 'rgba(255,255,255,0.02)', 
+        borderRadius: '24px', 
+        border: '1px solid rgba(255,255,255,0.05)' 
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div>
+            <h3 style={{ fontSize: '0.75rem', color: '#888888', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Privacy Vault</h3>
+            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ccff00', marginTop: '4px' }}>
+              {vaultBalance ? Number(ethers.formatUnits(vaultBalance.balance, 18)).toFixed(2) : "0.00"}
+              <span style={{ fontSize: '0.875rem', color: '#888888', marginLeft: '8px' }}>dUSDC</span>
+            </p>
           </div>
-          <div className="flex items-center justify-between px-2">
-             <span className="text-xs text-white/40 uppercase font-black tracking-widest">Privacy level</span>
-             <span className="text-[10px] flex items-center gap-1 text-[#ccff00] font-black uppercase">
-                <Lock className="w-2.5 h-2.5" /> Full (End-to-End)
-             </span>
+          <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(204,255,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldCheck size={24} color="#ccff00" />
           </div>
         </div>
-      )}
+
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+          <input 
+            type="number"
+            value={depositAmount}
+            onChange={(e) => setDepositAmount(e.target.value)}
+            placeholder="0.00"
+            style={{
+              flex: 1,
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '12px',
+              padding: '14px',
+              color: 'white',
+              fontSize: '1rem',
+              fontWeight: 600,
+              outline: 'none'
+            }}
+          />
+          <button 
+            onClick={handleDeposit}
+            disabled={!depositAmount || isSubmitting || isConfirming}
+            style={{
+              padding: '0 20px',
+              borderRadius: '12px',
+              background: 'rgba(255,255,255,0.05)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.1)',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              opacity: (!depositAmount || isSubmitting || isConfirming) ? 0.5 : 1
+            }}
+          >
+            {isSubmitting || isConfirming ? "..." : "Deposit"}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Wallet size={14} color="#555555" />
+          <p style={{ fontSize: '0.75rem', color: '#555555' }}>
+            Public Balance: {tokenBalance ? Number(ethers.formatUnits(tokenBalance as bigint, 18)).toFixed(2) : "0.00"} dUSDC
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

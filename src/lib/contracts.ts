@@ -25,3 +25,5 @@ export const CONFLUX_TESTNET = {
     default: { name: "ConfluxScan", url: "https://evmtestnet.confluxscan.io" }
   },
 } as const;
+
+export const CONFLUX_ESPACE_TESTNET = CONFLUX_TESTNET;
