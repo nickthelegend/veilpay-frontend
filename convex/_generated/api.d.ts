@@ -9,6 +9,7 @@
  */
 
 import type * as announcements from "../announcements.js";
+import type * as darkpool from "../darkpool.js";
 import type * as payments from "../payments.js";
 import type * as scanning from "../scanning.js";
 import type * as users from "../users.js";
@@ -21,6 +22,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   announcements: typeof announcements;
+  darkpool: typeof darkpool;
   payments: typeof payments;
   scanning: typeof scanning;
   users: typeof users;

@@ -112,5 +112,56 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_wallet", ["walletAddress"]),
+  
+  // DARK POOL TABLES
+  
+  // Tracks user balances within the ZK Dark Pool vault
+  vaultBalances: defineTable({
+    walletAddress: v.string(),        // EOA owner
+    tokenAddress: v.string(),         // ERC20 contract address
+    balance: v.string(),              // current balance in wei
+    pendingDeposit: v.string(),       // optional: amount currently being deposited
+    lastUpdated: v.number(),
+  })
+    .index("by_wallet", ["walletAddress"])
+    .index("by_wallet_token", ["walletAddress", "tokenAddress"]),
+
+  // Private orders submitted to the dark pool
+  darkOrders: defineTable({
+    owner: v.string(),                // owner wallet
+    commitment: v.string(),           // ZK commitment hash
+    tokenPairId: v.number(),          // trading pair
+    side: v.union(v.literal("buy"), v.literal("sell")),
+    amount: v.string(),               // original amount
+    price: v.string(),                // limit price
+    status: v.union(
+      v.literal("pending"),           // proof being generated / tx submitted
+      v.literal("active"),            // registered on-chain, waiting for match
+      v.literal("partially_filled"),  // matched but has remainder
+      v.literal("filled"),            // completed
+      v.literal("cancelled"),         // removed by user
+    ),
+    remainingAmount: v.string(),      // amount left to fill
+    txHash: v.optional(v.string()),   // on-chain submission tx
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["owner"])
+    .index("by_commitment", ["commitment"])
+    .index("by_status", ["status"]),
+
+  // Settlement events indexed from the DarkBookEngine
+  darkPoolSettlements: defineTable({
+    commitmentA: v.string(),          // buyer commitment
+    commitmentB: v.string(),          // seller commitment
+    fillAmount: v.string(),           // amount filled in this match
+    settlementPrice: v.string(),      // price of the transaction
+    txHash: v.string(),               // settlement tx hash
+    blockNumber: v.number(),
+    timestamp: v.number(),
+  })
+    .index("by_commitment_a", ["commitmentA"])
+    .index("by_commitment_b", ["commitmentB"])
+    .index("by_timestamp", ["timestamp"]),
 
 });
